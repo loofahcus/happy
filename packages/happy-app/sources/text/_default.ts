@@ -285,7 +285,8 @@ export const en = {
             notGitRepo: 'Worktrees require a git repository',
             failed: ({ error }: { error: string }) => `Failed to create worktree: ${error}`,
             success: 'Worktree created successfully',
-        }
+        },
+        resumeLastSession: 'Resume last session',
     },
 
     sessionHistory: {
@@ -321,7 +322,7 @@ export const en = {
         failedToConnectToServer: 'Failed to connect to server',
         currentlyUsingCustomServer: 'Currently using custom server',
         customServerUrlLabel: 'Custom Server URL',
-        advancedFeatureFooter: "This is an advanced feature. Only change the server if you know what you're doing. You will need to log out and log in again after changing servers."
+        advancedFeatureFooter: "This is an advanced feature. Only change the server if you know what you're doing. You will need to log out and log in again after changing servers.",
     },
 
     sessionInfo: {
@@ -373,6 +374,10 @@ export const en = {
         deleteSessionConfirm: 'Delete Session Permanently?',
         deleteSessionWarning: 'This action cannot be undone. All messages and data associated with this session will be permanently deleted.',
         failedToDeleteSession: 'Failed to delete session',
+        resumeSession: 'Resume Session',
+        resumeSessionSubtitle: 'Continue this conversation in a new session',
+        resumeSessionMachineOffline: 'Machine is offline',
+        failedToResumeSession: 'Failed to resume session',
         sessionDeleted: 'Session deleted successfully',
         
     },

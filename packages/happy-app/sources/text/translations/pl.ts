@@ -297,7 +297,8 @@ export const pl: TranslationStructure = {
             notGitRepo: 'Worktree wymaga repozytorium git',
             failed: ({ error }: { error: string }) => `Nie udało się utworzyć worktree: ${error}`,
             success: 'Worktree został utworzony pomyślnie',
-        }
+        },
+        resumeLastSession: 'Wznów ostatnią sesję',
     },
 
     sessionHistory: {
@@ -385,6 +386,10 @@ export const pl: TranslationStructure = {
         deleteSessionConfirm: 'Usunąć sesję na stałe?',
         deleteSessionWarning: 'Ta operacja jest nieodwracalna. Wszystkie wiadomości i dane powiązane z tą sesją zostaną trwale usunięte.',
         failedToDeleteSession: 'Nie udało się usunąć sesji',
+        resumeSession: 'Wznów sesję',
+        resumeSessionSubtitle: 'Kontynuuj tę rozmowę w nowej sesji',
+        resumeSessionMachineOffline: 'Maszyna jest offline',
+        failedToResumeSession: 'Nie udało się wznowić sesji',
         sessionDeleted: 'Sesja została pomyślnie usunięta',
     },
 

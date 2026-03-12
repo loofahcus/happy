@@ -6,6 +6,7 @@ import React from "react";
 import { claudeRemote } from "./claudeRemote";
 import { PermissionHandler } from "./utils/permissionHandler";
 import { Future } from "@/utils/future";
+import { restoreStdin } from "@/utils/restoreStdin";
 import { SDKAssistantMessage, SDKMessage, SDKUserMessage } from "./sdk";
 import { formatClaudeMessageForInk } from "@/ui/messageFormatterInk";
 import { logger } from "@/ui/logger";
@@ -30,11 +31,36 @@ export async function claudeRemoteLauncher(session: Session): Promise<'switch' |
     const hasTTY = process.stdout.isTTY && process.stdin.isTTY;
     logger.debug(`[claudeRemoteLauncher] TTY available: ${hasTTY}`);
 
-    // Configure terminal
+    // Configure terminal - MUST setup stdin BEFORE rendering Ink
+    // Otherwise Ink can't attach to stdin properly and input handling breaks
     let messageBuffer = new MessageBuffer();
     let inkInstance: any = null;
 
     if (hasTTY) {
+        // Force a complete stdin reset before Ink setup.
+        // This ensures state.reading = false so that when Ink adds its
+        // 'readable' listener, Node.js triggers read(0) → handle.readStart().
+        // IMPORTANT: Do NOT call resume()/setRawMode()/setEncoding() manually —
+        // Ink's handleSetRawMode(true) handles all of these internally.
+        // Calling resume() before Ink sets state.reading = true, which causes
+        // Ink's addListener('readable') to skip read(0), potentially leaving
+        // the libuv handle stopped and keystrokes not received.
+        restoreStdin();
+
+        // Log stdin state after restoreStdin, before Ink render
+        try {
+            const state = (process.stdin as any)._readableState;
+            const handle = (process.stdin as any)._handle;
+            logger.debug(
+                `[claudeRemoteLauncher] pre-render stdin: ` +
+                `reading=${state?.reading}, flowing=${state?.flowing}, ` +
+                `ended=${state?.ended}, handle.reading=${handle?.reading}, ` +
+                `listeners.readable=${process.stdin.listenerCount('readable')}` 
+            );
+        } catch {
+            // Debug logging should not fail
+        }
+
         console.clear();
         inkInstance = render(React.createElement(RemoteModeDisplay, {
             messageBuffer,
@@ -56,14 +82,50 @@ export async function claudeRemoteLauncher(session: Session): Promise<'switch' |
             exitOnCtrlC: false,
             patchConsole: false
         });
-    }
 
-    if (hasTTY) {
-        process.stdin.resume();
-        if (process.stdin.isTTY) {
-            process.stdin.setRawMode(true);
+        // Log stdin state after Ink render to verify Ink's setup worked
+        try {
+            const state = (process.stdin as any)._readableState;
+            const handle = (process.stdin as any)._handle;
+            logger.debug(
+                `[claudeRemoteLauncher] post-render stdin: ` +
+                `reading=${state?.reading}, flowing=${state?.flowing}, ` +
+                `ended=${state?.ended}, handle.reading=${handle?.reading}, ` +
+                `errored=${state?.errored}, constructed=${state?.constructed}, ` +
+                `listeners.readable=${process.stdin.listenerCount('readable')}`
+            );
+        } catch {
+            // Debug logging should not fail
         }
-        process.stdin.setEncoding("utf8");
+
+        // Safety net: ensure the libuv handle is actually reading.
+        // Ink's addListener('readable') schedules read(0) via process.nextTick,
+        // but read(0) can be blocked by stale state flags (errored, constructed,
+        // etc.) that we may not have fully cleaned up. If the handle isn't
+        // reading after a tick, force-start it directly.
+        process.nextTick(() => {
+            try {
+                const handle = (process.stdin as any)._handle;
+                const state = (process.stdin as any)._readableState;
+                if (handle && !handle.reading && typeof handle.readStart === 'function') {
+                    logger.debug(
+                        '[claudeRemoteLauncher] handle not reading after render — force-starting. ' +
+                        `state.reading=${state?.reading}, state.errored=${state?.errored}, ` +
+                        `state.constructed=${state?.constructed}`
+                    );
+                    state.reading = true;
+                    handle.reading = true;
+                    handle.readStart();
+                    logger.debug('[claudeRemoteLauncher] force-started stdin handle');
+                } else {
+                    logger.debug(
+                        `[claudeRemoteLauncher] nextTick check: handle.reading=${handle?.reading} — OK`
+                    );
+                }
+            } catch {
+                // Non-critical — best-effort handle start
+            }
+        });
     }
 
     // Handle abort
@@ -300,7 +362,7 @@ export async function claudeRemoteLauncher(session: Session): Promise<'switch' |
         // without starting a new session. Only reset parent chain when session ID
         // actually changes (e.g., new session started or /clear command used).
         // See: https://github.com/anthropics/happy-cli/issues/143
-        let previousSessionId: string | null = null;
+        let previousSessionId: string | null = session.sessionId;
         while (!exitReason) {
             logger.debug('[remote]: launch');
             messageBuffer.addMessage('═'.repeat(40), 'status');
@@ -401,6 +463,14 @@ export async function claudeRemoteLauncher(session: Session): Promise<'switch' |
                     session.client.closeClaudeSessionTurn('cancelled');
                     session.client.sendSessionEvent({ type: 'message', message: 'Aborted by user' });
                 }
+
+                // When switching to local mode, close any open turn so the protocol
+                // state is clean for the session scanner. Without this, the scanner's
+                // first user message would emit a stale turn-end coupled with the
+                // user text in one batch, which the mobile app may not render correctly.
+                if (exitReason === 'switch') {
+                    session.client.closeClaudeSessionTurn('completed');
+                }
             } catch (e) {
                 logger.debug('[remote]: launch error', e);
                 if (!exitReason) {
@@ -443,14 +513,19 @@ export async function claudeRemoteLauncher(session: Session): Promise<'switch' |
         // Clean up permission handler
         permissionHandler.reset();
 
-        // Reset Terminal
-        process.stdin.off('data', abort);
-        if (process.stdin.isTTY) {
-            process.stdin.setRawMode(false);
-        }
+        // Unmount Ink FIRST — it expects raw mode to still be active during teardown.
+        // Reversing this order (disabling raw mode first) causes Ink to corrupt the terminal.
         if (inkInstance) {
-            inkInstance.unmount();
+            try {
+                inkInstance.unmount();
+            } catch {
+                // Ink unmount can throw if already unmounted
+            }
         }
+
+        // Now restore stdin to a clean state for the next consumer (local mode / child process)
+        restoreStdin();
+
         messageBuffer.clear();
 
         // Resolve abort future

@@ -11,6 +11,7 @@ import { projectPath } from "@/projectPath";
 import { systemPrompt } from "./utils/systemPrompt";
 import type { SandboxConfig } from "@/persistence";
 import { initializeSandbox, wrapCommand } from "@/sandbox/manager";
+import { restoreStdin } from "@/utils/restoreStdin";
 
 /**
  * Error thrown when the Claude process exits with a non-zero exit code.
@@ -184,8 +185,10 @@ export async function claudeLocal(opts: {
 
     // Spawn the process
     try {
-        // Start the interactive process
-        process.stdin.pause();
+        // Ensure stdin is fully clean before handing it to the child process.
+        // This guards against edge cases where remote mode cleanup was incomplete
+        // (e.g., encoding left as utf8, raw mode still active, flowing mode).
+        restoreStdin();
         await new Promise<void>((r, reject) => {
             const args: string[] = []
 
@@ -288,12 +291,36 @@ export async function claudeLocal(opts: {
                     spawnWithShell ? [] : spawnArgs,
                     {
                         stdio: ['inherit', 'inherit', 'inherit', 'pipe'],
-                        signal: opts.abort,
                         cwd: opts.path,
                         env,
                         shell: spawnWithShell,
+                        // Create a new process group so we can kill the entire tree
+                        // (claude_local_launcher → claude CLI → claude-linux-x64, etc.)
+                        // on mode switch. Without this, only the direct child gets SIGTERM
+                        // and grandchildren survive, competing for stdin.
+                        detached: true,
                     },
                 );
+
+                // Kill entire process group when abort signal fires.
+                // This replaces the `signal: opts.abort` option which only kills the direct child.
+                const killProcessGroup = () => {
+                    if (child.pid) {
+                        try {
+                            // Negative PID kills the entire process group
+                            process.kill(-child.pid, 'SIGTERM');
+                            logger.debug(`[ClaudeLocal] Killed process group ${child.pid}`);
+                        } catch {
+                            // Process group already gone
+                        }
+                    }
+                };
+
+                if (opts.abort.aborted) {
+                    killProcessGroup();
+                } else {
+                    opts.abort.addEventListener('abort', killProcessGroup, { once: true });
+                }
 
                 // Listen to the custom fd (fd 3) for thinking state tracking
                 if (child.stdio[3]) {
@@ -366,6 +393,8 @@ export async function claudeLocal(opts: {
                     // Ignore
                 });
                 child.on('exit', async (code, signal) => {
+                    // Clean up abort listener since child already exited
+                    opts.abort.removeEventListener('abort', killProcessGroup);
                     if (cleanupSandbox) {
                         try {
                             await cleanupSandbox();
@@ -375,7 +404,7 @@ export async function claudeLocal(opts: {
                     }
 
                     if (signal === 'SIGTERM' && opts.abort.aborted) {
-                        // Normal termination due to abort signal
+                        // Normal termination due to abort signal (process group killed)
                         r();
                     } else if (signal) {
                         reject(new Error(`Process terminated with signal: ${signal}`));
@@ -389,7 +418,14 @@ export async function claudeLocal(opts: {
             })().catch(reject);
         });
     } finally {
-        process.stdin.resume();
+        // Restore stdin to a clean state after the child process exits.
+        // The child (Claude Code with stdio: 'inherit') may have changed TTY
+        // settings (raw mode, etc.) at the OS level. restoreStdin() ensures
+        // Node.js internal stream state is consistent for the next consumer.
+        // NOTE: Do NOT call process.stdin.resume() — the next consumer
+        // (claudeRemoteLauncher or next claudeLocal) is responsible for
+        // setting up stdin properly.
+        restoreStdin();
         if (stopThinkingTimeout) {
             clearTimeout(stopThinkingTimeout);
             stopThinkingTimeout = null;

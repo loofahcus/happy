@@ -150,6 +150,8 @@ export interface SpawnSessionOptions {
     // - API_TIMEOUT_MS, CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC
     // - Custom variables (DEEPSEEK_*, Z_AI_*, etc.)
     environmentVariables?: Record<string, string>;
+    // Claude Code session ID to resume (--resume flag)
+    sessionId?: string;
 }
 
 // Exported session operation functions
@@ -159,7 +161,7 @@ export interface SpawnSessionOptions {
  */
 export async function machineSpawnNewSession(options: SpawnSessionOptions): Promise<SpawnSessionResult> {
 
-    const { machineId, directory, approvedNewDirectoryCreation = false, token, agent, environmentVariables } = options;
+    const { machineId, directory, approvedNewDirectoryCreation = false, token, agent, environmentVariables, sessionId } = options;
 
     try {
         const result = await apiSocket.machineRPC<SpawnSessionResult, {
@@ -169,10 +171,11 @@ export async function machineSpawnNewSession(options: SpawnSessionOptions): Prom
             token?: string,
             agent?: 'codex' | 'claude' | 'gemini',
             environmentVariables?: Record<string, string>;
+            sessionId?: string;
         }>(
             machineId,
             'spawn-happy-session',
-            { type: 'spawn-in-directory', directory, approvedNewDirectoryCreation, token, agent, environmentVariables }
+            { type: 'spawn-in-directory', directory, approvedNewDirectoryCreation, token, agent, environmentVariables, sessionId }
         );
         return result;
     } catch (error) {
@@ -180,6 +183,42 @@ export async function machineSpawnNewSession(options: SpawnSessionOptions): Prom
         return {
             type: 'error',
             errorMessage: error instanceof Error ? error.message : 'Failed to spawn session'
+        };
+    }
+}
+
+/**
+ * Resume an existing session on a specific machine
+ */
+export async function machineResumeSession(options: {
+    machineId: string;
+    directory: string;
+    claudeSessionId: string;
+    agent?: 'codex' | 'claude' | 'gemini';
+    token?: string;
+    environmentVariables?: Record<string, string>;
+}): Promise<SpawnSessionResult> {
+    const { machineId, directory, claudeSessionId, agent, token, environmentVariables } = options;
+
+    try {
+        const result = await apiSocket.machineRPC<SpawnSessionResult, {
+            type: 'spawn-in-directory'
+            directory: string
+            sessionId: string
+            approvedNewDirectoryCreation: boolean
+            agent?: 'codex' | 'claude' | 'gemini'
+            token?: string
+            environmentVariables?: Record<string, string>
+        }>(
+            machineId,
+            'spawn-happy-session',
+            { type: 'spawn-in-directory', directory, sessionId: claudeSessionId, approvedNewDirectoryCreation: false, agent, token, environmentVariables }
+        );
+        return result;
+    } catch (error) {
+        return {
+            type: 'error',
+            errorMessage: error instanceof Error ? error.message : 'Failed to resume session'
         };
     }
 }

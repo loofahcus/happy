@@ -11,8 +11,11 @@ import { useSession, useIsDataReady } from '@/sync/storage';
 import { getSessionName, useSessionStatus, formatOSPlatform, formatPathRelativeToHome, getSessionAvatarId } from '@/utils/sessionUtils';
 import * as Clipboard from 'expo-clipboard';
 import { Modal } from '@/modal';
-import { sessionKill, sessionDelete } from '@/sync/ops';
+import { sessionKill, sessionDelete, machineResumeSession } from '@/sync/ops';
 import { useUnistyles } from 'react-native-unistyles';
+import { useMachine } from '@/sync/storage';
+import { isMachineOnline } from '@/utils/machineUtils';
+import { sync } from '@/sync/sync';
 import { layout } from '@/components/layout';
 import { t } from '@/text';
 import { isVersionSupported, MINIMUM_CLI_VERSION } from '@/utils/versionUtils';
@@ -130,6 +133,29 @@ function SessionInfoContent({ session }: { session: Session }) {
     // Check if CLI version is outdated
     const isCliOutdated = session.metadata?.version && !isVersionSupported(session.metadata.version, MINIMUM_CLI_VERSION);
 
+
+    // Resume session
+    const machine = useMachine(session.metadata?.machineId || '');
+    const machineOnline = machine ? isMachineOnline(machine) : false;
+    const canResume = !sessionStatus.isConnected && !session.active
+        && !!session.metadata?.claudeSessionId && !!session.metadata?.machineId;
+    const [resumingSession, performResume] = useHappyAction(async () => {
+        if (!session.metadata?.claudeSessionId || !session.metadata?.machineId || !session.metadata?.path) return;
+        const result = await machineResumeSession({
+            machineId: session.metadata.machineId,
+            directory: session.metadata.path,
+            claudeSessionId: session.metadata.claudeSessionId,
+            agent: (session.metadata?.flavor as 'claude' | 'codex' | 'gemini') || 'claude',
+        });
+        if (result.type !== 'success') {
+            throw new HappyError(
+                'errorMessage' in result ? result.errorMessage : t('sessionInfo.failedToResumeSession'),
+                false
+            );
+        }
+        await sync.refreshSessions();
+        router.replace(`/session/${result.sessionId}`);
+    });
     const handleCopySessionId = useCallback(async () => {
         if (!session) return;
         try {
@@ -287,6 +313,17 @@ function SessionInfoContent({ session }: { session: Session }) {
                         icon={<Ionicons name="pulse-outline" size={29} color={sessionStatus.isConnected ? "#34C759" : "#8E8E93"} />}
                         showChevron={false}
                     />
+                    {canResume && (
+                        <Item
+                            title={t('sessionInfo.resumeSession')}
+                            subtitle={machineOnline
+                                ? t('sessionInfo.resumeSessionSubtitle')
+                                : t('sessionInfo.resumeSessionMachineOffline')}
+                            icon={<Ionicons name="play-outline" size={29} color={machineOnline ? "#34C759" : "#8E8E93"} />}
+                            onPress={machineOnline ? performResume : undefined}
+                            loading={resumingSession}
+                        />
+                    )}
                     <Item
                         title={t('sessionInfo.created')}
                         subtitle={formatDate(session.createdAt)}

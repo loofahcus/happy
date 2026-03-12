@@ -414,6 +414,7 @@ function NewSessionWizard() {
     });
     const [isCreating, setIsCreating] = React.useState(false);
     const [showAdvanced, setShowAdvanced] = React.useState(false);
+    const [resumeEnabled, setResumeEnabled] = React.useState(false);
 
     // Handle machineId route param from picker screens (main's navigation pattern)
     React.useEffect(() => {
@@ -443,6 +444,28 @@ function NewSessionWizard() {
 
     // Path selection state - initialize with formatted selected path
 
+
+    // Find the most recent resumable session for the selected machine + path
+    const resumableSession = React.useMemo(() => {
+        if (!selectedMachineId || !selectedPath) return null;
+        const allSessions = Object.values(storage.getState().sessions);
+        // Find inactive sessions with matching path and a Claude session ID
+        const candidates = allSessions.filter(
+            (s) =>
+                s.metadata?.machineId === selectedMachineId &&
+                s.metadata?.path === selectedPath &&
+                s.metadata?.claudeSessionId &&
+                !s.active,
+        );
+        if (candidates.length === 0) return null;
+        // Return most recently updated
+        return candidates.sort((a, b) => (b.updatedAt ?? 0) - (a.updatedAt ?? 0))[0];
+    }, [selectedMachineId, selectedPath]);
+
+    // Reset resume toggle when there's no resumable session
+    React.useEffect(() => {
+        if (!resumableSession) setResumeEnabled(false);
+    }, [resumableSession]);
     // Refs for scrolling to sections
     const scrollViewRef = React.useRef<ScrollView>(null);
     const profileSectionRef = React.useRef<View>(null);
@@ -1036,7 +1059,10 @@ function NewSessionWizard() {
                 directory: actualPath,
                 approvedNewDirectoryCreation: true,
                 agent: agentType,
-                environmentVariables
+                environmentVariables,
+                sessionId: resumeEnabled && resumableSession?.metadata?.claudeSessionId
+                    ? resumableSession.metadata.claudeSessionId
+                    : undefined
             });
 
             if ('sessionId' in result && result.sessionId) {
@@ -1077,7 +1103,7 @@ function NewSessionWizard() {
             Modal.alert(t('common.error'), errorMessage);
             setIsCreating(false);
         }
-    }, [selectedMachineId, selectedPath, sessionPrompt, sessionType, experimentsEnabled, agentType, selectedProfileId, permissionMode, modelMode, recentMachinePaths, profileMap, router]);
+    }, [selectedMachineId, selectedPath, sessionPrompt, sessionType, experimentsEnabled, agentType, selectedProfileId, permissionMode, modelMode, recentMachinePaths, profileMap, router, resumeEnabled, resumableSession]);
 
     const screenWidth = useWindowDimensions().width;
 
@@ -1871,6 +1897,26 @@ function NewSessionWizard() {
                                 );
                                 })}
                             </ItemGroup>
+
+
+                            {/* Resume session toggle */}
+                            {resumableSession && (
+                                <ItemGroup>
+                                    <Item
+                                        title={t("newSession.resumeLastSession")}
+                                        icon={
+                                            <Ionicons
+                                                name="refresh-outline"
+                                                size={20}
+                                                color={theme.colors.textLink}
+                                            />
+                                        }
+                                        onPress={() => setResumeEnabled(!resumeEnabled)}
+                                        selected={resumeEnabled}
+                                        showChevron={false}
+                                    />
+                                </ItemGroup>
+                            )}
 
                             {/* Section 5: Advanced Options (Collapsible) */}
                             {experimentsEnabled && (

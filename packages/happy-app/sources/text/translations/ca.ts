@@ -286,7 +286,8 @@ export const ca: TranslationStructure = {
             notGitRepo: 'Els worktrees requereixen un repositori git',
             failed: ({ error }: { error: string }) => `Error en crear el worktree: ${error}`,
             success: 'Worktree creat amb èxit',
-        }
+        },
+        resumeLastSession: 'Reprendre última sessió',
     },
 
     sessionHistory: {
@@ -374,6 +375,10 @@ export const ca: TranslationStructure = {
         deleteSessionConfirm: 'Eliminar la sessió permanentment?',
         deleteSessionWarning: 'Aquesta acció no es pot desfer. Tots els missatges i dades associats amb aquesta sessió s\'eliminaran permanentment.',
         failedToDeleteSession: 'Error en eliminar la sessió',
+        resumeSession: 'Reprendre la sessió',
+        resumeSessionSubtitle: 'Continuar aquesta conversa en una nova sessió',
+        resumeSessionMachineOffline: 'La màquina està fora de línia',
+        failedToResumeSession: 'Error en reprendre la sessió',
         sessionDeleted: 'Sessió eliminada amb èxit',
         
     },

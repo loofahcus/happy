@@ -318,7 +318,8 @@ export const ja: TranslationStructure = {
             notGitRepo: 'ワークツリーにはGitリポジトリが必要です',
             failed: ({ error }: { error: string }) => `ワークツリーの作成に失敗しました: ${error}`,
             success: 'ワークツリーが正常に作成されました',
-        }
+        },
+        resumeLastSession: '前回のセッションを再開',
     },
 
     sessionHistory: {
@@ -406,6 +407,10 @@ export const ja: TranslationStructure = {
         deleteSessionConfirm: 'セッションを完全に削除しますか？',
         deleteSessionWarning: 'この操作は取り消せません。このセッションに関連するすべてのメッセージとデータが完全に削除されます。',
         failedToDeleteSession: 'セッションの削除に失敗しました',
+        resumeSession: 'セッションを再開',
+        resumeSessionSubtitle: 'この会話を新しいセッションで続ける',
+        resumeSessionMachineOffline: 'マシンがオフラインです',
+        failedToResumeSession: 'セッションの再開に失敗しました',
         sessionDeleted: 'セッションが正常に削除されました',
 
     },

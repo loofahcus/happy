@@ -288,7 +288,8 @@ export const zhHans: TranslationStructure = {
             notGitRepo: 'Worktree 需要 git 仓库',
             failed: ({ error }: { error: string }) => `创建 worktree 失败：${error}`,
             success: 'Worktree 创建成功',
-        }
+        },
+        resumeLastSession: '恢复上次会话',
     },
 
     sessionHistory: {
@@ -376,6 +377,10 @@ export const zhHans: TranslationStructure = {
         deleteSessionConfirm: '永久删除会话？',
         deleteSessionWarning: '此操作无法撤销。与此会话相关的所有消息和数据将被永久删除。',
         failedToDeleteSession: '删除会话失败',
+        resumeSession: '恢复会话',
+        resumeSessionSubtitle: '在新会话中继续此对话',
+        resumeSessionMachineOffline: '机器离线',
+        failedToResumeSession: '恢复会话失败',
         sessionDeleted: '会话删除成功',
         
     },

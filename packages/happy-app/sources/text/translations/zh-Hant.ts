@@ -287,7 +287,8 @@ export const zhHant: TranslationStructure = {
             notGitRepo: 'Worktree 需要 git 倉庫',
             failed: ({ error }: { error: string }) => `建立 worktree 失敗：${error}`,
             success: 'Worktree 建立成功',
-        }
+        },
+        resumeLastSession: '恢復上次對話',
     },
 
     sessionHistory: {
@@ -375,6 +376,10 @@ export const zhHant: TranslationStructure = {
         deleteSessionConfirm: '永久刪除工作階段？',
         deleteSessionWarning: '此操作無法復原。與此工作階段相關的所有訊息和資料將被永久刪除。',
         failedToDeleteSession: '刪除工作階段失敗',
+        resumeSession: '恢復工作階段',
+        resumeSessionSubtitle: '在新的工作階段中繼續此對話',
+        resumeSessionMachineOffline: '機器離線',
+        failedToResumeSession: '恢復工作階段失敗',
         sessionDeleted: '工作階段刪除成功',
 
     },
