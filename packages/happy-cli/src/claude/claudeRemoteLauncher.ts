@@ -65,18 +65,18 @@ export async function claudeRemoteLauncher(session: Session): Promise<'switch' |
         inkInstance = render(React.createElement(RemoteModeDisplay, {
             messageBuffer,
             logPath: process.env.DEBUG ? session.logPath : undefined,
-            onExit: async () => {
+            onExit: () => {
                 // Exit the entire client
                 logger.debug('[remote]: Exiting client via Ctrl-C');
                 if (!exitReason) {
                     exitReason = 'exit';
                 }
-                await abort();
+                abort().catch(err => logger.debug('[remote]: abort error on exit', err));
             },
             onSwitchToLocal: () => {
                 // Switch to local mode
                 logger.debug('[remote]: Switching to local mode via double space');
-                doSwitch();
+                doSwitch().catch(err => logger.debug('[remote]: doSwitch error', err));
             }
         }), {
             exitOnCtrlC: false,
@@ -134,10 +134,13 @@ export async function claudeRemoteLauncher(session: Session): Promise<'switch' |
     let abortFuture: Future<void> | null = null;
 
     async function abort() {
-        if (abortController && !abortController.signal.aborted) {
-            abortController.abort();
+        // Capture references to avoid race with inner loop resetting them to null
+        const controller = abortController;
+        const future = abortFuture;
+        if (controller && !controller.signal.aborted) {
+            controller.abort();
         }
-        await abortFuture?.promise;
+        await future?.promise;
     }
 
     async function doAbort() {

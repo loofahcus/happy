@@ -394,7 +394,7 @@ export async function claudeLocal(opts: {
                     });
                 }
                 child.on('error', (error) => {
-                    // Ignore
+                    logger.debug(`[ClaudeLocal] Child process error: ${error.message}`);
                 });
                 child.on('exit', async (code, signal) => {
                     // Clean up abort listener since child already exited

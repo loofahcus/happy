@@ -357,7 +357,10 @@ export function query(config: {
     if (typeof prompt === 'string') {
         child.stdin.end()
     } else {
-        streamToStdin(prompt, child.stdin, config.options?.abort)
+        streamToStdin(prompt, child.stdin, config.options?.abort).catch((err) => {
+            // stdin write can fail if child process is killed during mode switch
+            logDebug(`streamToStdin error: ${err.message}`)
+        })
         childStdin = child.stdin
     }
 
@@ -386,9 +389,9 @@ export function query(config: {
             }
             if (code !== 0) {
                 query.setError(new Error(`Claude Code process exited with code ${code}`))
-            } else {
-                resolve()
             }
+            // Always resolve so readMessages() finally block runs (inputStream.done())
+            resolve()
         })
     })
 

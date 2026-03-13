@@ -184,8 +184,12 @@ export class MessageQueue2<T> {
         this.queue = [];
         this.closed = false;
 
-        // Clear waiter without calling it since we're not closing
-        this.waiter = null;
+        // Notify any waiting consumer so its Promise resolves instead of hanging forever
+        if (this.waiter) {
+            const waiter = this.waiter;
+            this.waiter = null;
+            waiter(false);
+        }
     }
 
     /**
