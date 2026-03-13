@@ -69,7 +69,16 @@ export async function notifyDaemonSessionStarted(
   });
 }
 
-export async function listDaemonSessions(): Promise<any[]> {
+export interface DaemonSession {
+  startedBy: string;
+  happySessionId: string;
+  pid: number;
+  claudeSessionId?: string;
+  path?: string;
+  flavor?: string;
+}
+
+export async function listDaemonSessions(): Promise<DaemonSession[]> {
   const result = await daemonPost('/list');
   return result.children || [];
 }
