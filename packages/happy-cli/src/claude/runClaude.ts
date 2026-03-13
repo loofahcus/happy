@@ -44,6 +44,8 @@ export interface StartOptions {
     noSandbox?: boolean
     /** JavaScript runtime to use for spawning Claude Code (default: 'node') */
     jsRuntime?: JsRuntime
+    /** Inject Happy's system prompt, MCP server, and tools into Claude sessions (default: false) */
+    happyInject?: boolean
 }
 
 export async function runClaude(credentials: Credentials, options: StartOptions = {}): Promise<void> {
@@ -198,9 +200,11 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
     // Create realtime session
     const session = api.sessionSyncClient(response);
 
-    // Start Happy MCP server
-    const happyServer = await startHappyServer(session);
-    logger.debug(`[START] Happy MCP server started at ${happyServer.url}`);
+    // Start Happy MCP server (only when happyInject is enabled)
+    const happyServer = options.happyInject ? await startHappyServer(session) : null;
+    if (happyServer) {
+        logger.debug(`[START] Happy MCP server started at ${happyServer.url}`);
+    }
 
     // Variable to track current session instance (updated via onSessionReady callback)
     // Used by hook server to notify Session when Claude changes session ID
@@ -418,7 +422,7 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
             stopCaffeinate();
 
             // Stop Happy MCP server
-            happyServer.stop();
+            happyServer?.stop();
 
             // Stop Hook server and cleanup settings file
             hookServer.stop();
@@ -457,7 +461,7 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
         startingMode: options.startingMode,
         messageQueue,
         api,
-        allowedTools: happyServer.toolNames.map(toolName => `mcp__happy__${toolName}`),
+        allowedTools: happyServer ? happyServer.toolNames.map(toolName => `mcp__happy__${toolName}`) : [],
         onModeChange: (newMode) => {
             session.sendSessionEvent({ type: 'switch', mode: newMode });
             session.updateAgentState((currentState) => ({
@@ -469,18 +473,19 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
             // Store reference for hook server callback
             currentSession = sessionInstance;
         },
-        mcpServers: {
+        mcpServers: happyServer ? {
             'happy': {
                 type: 'http' as const,
                 url: happyServer.url,
             }
-        },
+        } : {},
         session,
         claudeEnvVars: options.claudeEnvVars,
         claudeArgs: options.claudeArgs,
         sandboxConfig,
         hookSettingsPath,
-        jsRuntime: options.jsRuntime
+        jsRuntime: options.jsRuntime,
+        happyInject: options.happyInject,
     });
 
     // Cleanup session resources (intervals, callbacks) - prevents memory leak
@@ -503,7 +508,7 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
     logger.debug('Stopped sleep prevention');
 
     // Stop Happy MCP server
-    happyServer.stop();
+    happyServer?.stop();
     logger.debug('Stopped Happy MCP server');
 
     // Stop Hook server and cleanup settings file

@@ -42,6 +42,8 @@ interface LoopOptions {
     hookSettingsPath: string
     /** JavaScript runtime to use for spawning Claude Code (default: 'node') */
     jsRuntime?: JsRuntime
+    /** Inject Happy's system prompt, MCP server, and tools into Claude sessions (default: false) */
+    happyInject?: boolean
 }
 
 export async function loop(opts: LoopOptions): Promise<number> {
@@ -62,7 +64,8 @@ export async function loop(opts: LoopOptions): Promise<number> {
         sandboxConfig: opts.sandboxConfig,
         onModeChange: opts.onModeChange,
         hookSettingsPath: opts.hookSettingsPath,
-        jsRuntime: opts.jsRuntime
+        jsRuntime: opts.jsRuntime,
+        happyInject: opts.happyInject
     });
 
     opts.onSessionReady?.(session)

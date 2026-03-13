@@ -595,6 +595,8 @@ ${chalk.bold('To clean up runaway processes:')} Use ${chalk.cyan('happy doctor c
       } else if (arg === '--no-chrome') {
         chromeOverride = false
         // Happy-specific flag to disable chrome even if default is on
+      } else if (arg === '--happy-inject') {
+        options.happyInject = true
       } else if (arg === '--settings') {
         // Intercept --settings flag - Happy uses this internally for session hooks
         const settingsValue = args[++i] // consume the value
@@ -648,6 +650,7 @@ ${chalk.bold('Examples:')}
                             happy sugar for --dangerously-skip-permissions
   happy --chrome           Enable Chrome browser access for this session
   happy --no-chrome        Disable Chrome even if default is on
+  happy --happy-inject     Inject Happy's system prompt and tools
   happy --no-sandbox       Disable Happy sandbox for this session
   happy --js-runtime bun   Use bun instead of node to spawn Claude Code
   happy --claude-env ANTHROPIC_BASE_URL=http://127.0.0.1:3456
