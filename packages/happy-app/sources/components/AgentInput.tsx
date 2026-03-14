@@ -500,7 +500,7 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
 
         // Original key handling
         if (Platform.OS === 'web') {
-            if (agentInputEnterToSend && event.key === 'Enter' && !event.shiftKey) {
+            if (agentInputEnterToSend && event.key === 'Enter' && !event.shiftKey && !props.isSendDisabled) {
                 if (props.value.trim()) {
                     props.onSend();
                     return true; // Key was handled
@@ -517,7 +517,7 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
 
         }
         return false; // Key was not handled
-    }, [suggestions, moveUp, moveDown, selected, handleSuggestionSelect, props.showAbortButton, props.onAbort, isAborting, handleAbortPress, agentInputEnterToSend, props.value, props.onSend, props.onPermissionModeChange, availableModes, permissionModeKey]);
+    }, [suggestions, moveUp, moveDown, selected, handleSuggestionSelect, props.showAbortButton, props.onAbort, isAborting, handleAbortPress, agentInputEnterToSend, props.value, props.onSend, props.isSendDisabled, props.onPermissionModeChange, availableModes, permissionModeKey]);
 
 
 

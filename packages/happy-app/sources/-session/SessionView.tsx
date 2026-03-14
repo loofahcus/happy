@@ -14,6 +14,7 @@ import { Deferred } from '@/components/Deferred';
 import { EmptyMessages } from '@/components/EmptyMessages';
 import { VoiceAssistantStatusBar } from '@/components/VoiceAssistantStatusBar';
 import { useDraft } from '@/hooks/useDraft';
+import { useOnSendAction, notifySendAction } from '@/hooks/useSendLock';
 import { Modal } from '@/modal';
 import { voiceHooks } from '@/realtime/hooks/voiceHooks';
 import { startRealtimeSession, stopRealtimeSession } from '@/realtime/RealtimeSession';
@@ -164,6 +165,7 @@ function SessionViewLoaded({ sessionId, session }: { sessionId: string, session:
     const isLandscape = useIsLandscape();
     const deviceType = useDeviceType();
     const [message, setMessage] = React.useState('');
+    const [localSending, setLocalSending] = React.useState(false);
     const realtimeStatus = useRealtimeStatus();
     const { messages, isLoaded } = useSessionMessages(sessionId);
     const acknowledgedCliVersions = useLocalSetting('acknowledgedCliVersions');
@@ -202,6 +204,17 @@ function SessionViewLoaded({ sessionId, session }: { sessionId: string, session:
     const alwaysShowContextSize = useSetting('alwaysShowContextSize');
     const experiments = useSetting('experiments');
 
+    // Reset localSending when server state changes (thinking started or completed)
+    React.useEffect(() => {
+        setLocalSending(false);
+    }, [sessionStatus.state]);
+
+
+    // Subscribe to send actions from child components (PermissionFooter, AskUserQuestionView)
+    const handleSendAction = React.useCallback(() => {
+        setLocalSending(true);
+    }, []);
+    useOnSendAction(sessionId, handleSendAction);
     // Use draft hook for auto-saving message drafts
     const { clearDraft } = useDraft(sessionId, message, setMessage);
 
@@ -322,6 +335,7 @@ function SessionViewLoaded({ sessionId, session }: { sessionId: string, session:
                     clearDraft();
                     sync.sendMessage(sessionId, message);
                     trackMessageSent();
+                    setLocalSending(true);
                 }
             }}
             onMicPress={micButtonState.onMicPress}
@@ -346,6 +360,7 @@ function SessionViewLoaded({ sessionId, session }: { sessionId: string, session:
                 contextSize: session.latestUsage.contextSize
             } : undefined}
             alwaysShowContextSize={alwaysShowContextSize}
+            isSendDisabled={localSending || sessionStatus.state === 'thinking'}
         />
     );
 

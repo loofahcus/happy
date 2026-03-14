@@ -7,6 +7,7 @@ import { sessionAllow } from '@/sync/ops';
 import { sync } from '@/sync/sync';
 import { t } from '@/text';
 import { Ionicons } from '@expo/vector-icons';
+import { notifySendAction } from '@/hooks/useSendLock';
 
 interface QuestionOption {
     label: string;
@@ -223,6 +224,7 @@ export const AskUserQuestionView = React.memo<ToolViewProps>(({ tool, sessionId 
         // are in flight, but those edits would be ignored since we've already
         // captured the values above. TODO: Revisit this logic.
         setIsSubmitted(true);
+        notifySendAction(sessionId);
 
         // Format answers as readable text
         const responseLines: string[] = [];

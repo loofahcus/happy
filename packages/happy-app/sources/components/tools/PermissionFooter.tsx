@@ -5,6 +5,7 @@ import { sessionAllow, sessionDeny } from '@/sync/ops';
 import { useUnistyles } from 'react-native-unistyles';
 import { storage } from '@/sync/storage';
 import { t } from '@/text';
+import { notifySendAction } from '@/hooks/useSendLock';
 
 interface PermissionFooterProps {
     permission: {
@@ -34,6 +35,7 @@ export const PermissionFooter: React.FC<PermissionFooterProps> = ({ permission, 
         if (permission.status !== 'pending' || loadingButton !== null || loadingAllEdits || loadingForSession) return;
 
         setLoadingButton('allow');
+        notifySendAction(sessionId);
         try {
             await sessionAllow(sessionId, permission.id);
         } catch (error) {
@@ -47,6 +49,7 @@ export const PermissionFooter: React.FC<PermissionFooterProps> = ({ permission, 
         if (permission.status !== 'pending' || loadingButton !== null || loadingAllEdits || loadingForSession) return;
 
         setLoadingAllEdits(true);
+        notifySendAction(sessionId);
         try {
             await sessionAllow(sessionId, permission.id, 'acceptEdits');
             // Update the session permission mode to 'acceptEdits' for future permissions
@@ -62,6 +65,7 @@ export const PermissionFooter: React.FC<PermissionFooterProps> = ({ permission, 
         if (permission.status !== 'pending' || loadingButton !== null || loadingAllEdits || loadingForSession || !toolName) return;
 
         setLoadingForSession(true);
+        notifySendAction(sessionId);
         try {
             // Special handling for Bash tool - include exact command
             let toolIdentifier = toolName;
@@ -82,6 +86,7 @@ export const PermissionFooter: React.FC<PermissionFooterProps> = ({ permission, 
         if (permission.status !== 'pending' || loadingButton !== null || loadingAllEdits || loadingForSession) return;
 
         setLoadingButton('deny');
+        notifySendAction(sessionId);
         try {
             await sessionDeny(sessionId, permission.id);
         } catch (error) {
@@ -96,6 +101,7 @@ export const PermissionFooter: React.FC<PermissionFooterProps> = ({ permission, 
         if (permission.status !== 'pending' || loadingButton !== null || loadingForSession) return;
         
         setLoadingButton('allow');
+        notifySendAction(sessionId);
         try {
             await sessionAllow(sessionId, permission.id, undefined, undefined, 'approved');
         } catch (error) {
@@ -109,6 +115,7 @@ export const PermissionFooter: React.FC<PermissionFooterProps> = ({ permission, 
         if (permission.status !== 'pending' || loadingButton !== null || loadingForSession) return;
         
         setLoadingForSession(true);
+        notifySendAction(sessionId);
         try {
             await sessionAllow(sessionId, permission.id, undefined, undefined, 'approved_for_session');
         } catch (error) {
@@ -122,6 +129,7 @@ export const PermissionFooter: React.FC<PermissionFooterProps> = ({ permission, 
         if (permission.status !== 'pending' || loadingButton !== null || loadingForSession) return;
         
         setLoadingButton('abort');
+        notifySendAction(sessionId);
         try {
             await sessionDeny(sessionId, permission.id, undefined, undefined, 'abort');
         } catch (error) {
