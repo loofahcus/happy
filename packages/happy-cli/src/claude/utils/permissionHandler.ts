@@ -334,6 +334,43 @@ export class PermissionHandler {
     }
 
     /**
+     * Soft reset: clears tool call tracking and pending requests,
+     * but preserves allowed tools memory ("don't ask again" state).
+     * Used when claudeRemote restarts within the same session.
+     */
+    softReset(): void {
+        this.toolCalls = [];
+        this.responses.clear();
+
+        // Cancel all pending requests
+        for (const [, pending] of this.pendingRequests.entries()) {
+            pending.reject(new Error('Session reset'));
+        }
+        this.pendingRequests.clear();
+
+        // Move all pending requests to completedRequests with canceled status
+        this.session.client.updateAgentState((currentState) => {
+            const pendingRequests = currentState.requests || {};
+            const completedRequests = { ...currentState.completedRequests };
+
+            for (const [id, request] of Object.entries(pendingRequests)) {
+                completedRequests[id] = {
+                    ...request,
+                    completedAt: Date.now(),
+                    status: 'canceled',
+                    reason: 'Session restarted'
+                };
+            }
+
+            return {
+                ...currentState,
+                requests: {},
+                completedRequests
+            };
+        });
+    }
+
+    /**
      * Resets all state for new sessions
      */
     reset(): void {
@@ -411,7 +448,7 @@ export class PermissionHandler {
                             status: message.approved ? 'approved' : 'denied',
                             reason: message.reason,
                             mode: message.mode,
-                            allowTools: message.allowTools
+                            allowedTools: message.allowTools
                         }
                     }
                 };
