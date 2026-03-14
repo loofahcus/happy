@@ -313,25 +313,29 @@ export class ApiSessionClient extends EventEmitter {
             return;
         }
 
-        const batch = this.pendingOutbox.slice();
-        const response = await axios.post<V3PostSessionMessagesResponse>(
-            `${configuration.serverUrl}/v3/sessions/${encodeURIComponent(this.sessionId)}/messages`,
-            {
-                messages: batch
-            },
-            {
-                headers: this.authHeaders(),
-                timeout: 60000
-            }
-        );
+        const MAX_BATCH_SIZE = 100;
+        const all = this.pendingOutbox.slice();
+        this.pendingOutbox.splice(0, all.length);
 
-        this.pendingOutbox.splice(0, batch.length);
+        for (let i = 0; i < all.length; i += MAX_BATCH_SIZE) {
+            const batch = all.slice(i, i + MAX_BATCH_SIZE);
+            const response = await axios.post<V3PostSessionMessagesResponse>(
+                `${configuration.serverUrl}/v3/sessions/${encodeURIComponent(this.sessionId)}/messages`,
+                {
+                    messages: batch
+                },
+                {
+                    headers: this.authHeaders(),
+                    timeout: 60000
+                }
+            );
 
-        const messages = Array.isArray(response.data.messages) ? response.data.messages : [];
-        const maxSeq = messages.reduce((acc, message) => (
-            message.seq > acc ? message.seq : acc
-        ), this.lastSeq);
-        this.lastSeq = maxSeq;
+            const messages = Array.isArray(response.data.messages) ? response.data.messages : [];
+            const maxSeq = messages.reduce((acc, message) => (
+                message.seq > acc ? message.seq : acc
+            ), this.lastSeq);
+            this.lastSeq = maxSeq;
+        }
     }
 
     private enqueueMessage(content: unknown, invalidate: boolean = true) {
