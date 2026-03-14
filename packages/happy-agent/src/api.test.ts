@@ -544,3 +544,47 @@ describe('api', () => {
         });
     });
 });
+
+describe('api error propagation (regression)', () => {
+    let config: Config;
+    let creds: Credentials;
+
+    beforeEach(() => {
+        config = makeConfig();
+        creds = makeCredentials();
+        vi.resetAllMocks();
+    });
+
+    it('listSessions propagates network errors without undefined reference crash', async () => {
+        const networkError = new Error('Network Error');
+        mockedAxios.get.mockRejectedValueOnce(networkError);
+
+        await expect(listSessions(config, creds)).rejects.toThrow('Network Error');
+    });
+
+    it('listActiveSessions propagates network errors without undefined reference crash', async () => {
+        const networkError = new Error('ECONNREFUSED');
+        mockedAxios.get.mockRejectedValueOnce(networkError);
+
+        await expect(listActiveSessions(config, creds)).rejects.toThrow('ECONNREFUSED');
+    });
+
+    it('createSession propagates network errors without undefined reference crash', async () => {
+        const networkError = new Error('timeout');
+        mockedAxios.post.mockRejectedValueOnce(networkError);
+
+        await expect(
+            createSession(config, creds, { tag: 'test', metadata: {} }),
+        ).rejects.toThrow('timeout');
+    });
+
+    it('getSessionMessages propagates network errors without undefined reference crash', async () => {
+        const networkError = new Error('socket hang up');
+        mockedAxios.get.mockRejectedValueOnce(networkError);
+
+        const encryption = { key: creds.secret, variant: 'legacy' as const };
+        await expect(
+            getSessionMessages(config, creds, 'some-session', encryption),
+        ).rejects.toThrow('socket hang up');
+    });
+});

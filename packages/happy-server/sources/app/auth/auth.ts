@@ -15,8 +15,10 @@ interface AuthTokens {
 }
 
 class AuthModule {
+    private static readonly TOKEN_CACHE_TTL_MS = 24 * 60 * 60 * 1000; // 24 hours
     private tokenCache = new Map<string, TokenCacheEntry>();
     private tokens: AuthTokens | null = null;
+    private cleanupTimer: ReturnType<typeof setInterval> | null = null;
     
     async init(): Promise<void> {
         if (this.tokens) {
@@ -50,6 +52,7 @@ class AuthModule {
 
         this.tokens = { generator, verifier, githubVerifier, githubGenerator };
         
+        this.startPeriodicCleanup();
         log({ module: 'auth' }, 'Auth module initialized');
     }
     
@@ -99,7 +102,7 @@ class AuthModule {
             const userId = verified.user as string;
             const extras = verified.extras;
             
-            // Cache the result permanently
+            // Cache the result (will be evicted by periodic cleanup)
             this.tokenCache.set(token, {
                 userId,
                 extras,
@@ -177,12 +180,30 @@ class AuthModule {
         }
     }
 
-    // Cleanup old entries (optional - can be called periodically)
+    /** Evicts token cache entries older than TOKEN_CACHE_TTL_MS and logs remaining cache size. */
     cleanup(): void {
-        // Note: Since tokens are cached "forever" as requested,
-        // we don't do automatic cleanup. This method exists if needed later.
+        const now = Date.now();
+        for (const [token, entry] of this.tokenCache.entries()) {
+            if (now - entry.cachedAt > AuthModule.TOKEN_CACHE_TTL_MS) {
+                this.tokenCache.delete(token);
+            }
+        }
         const stats = this.getCacheStats();
-        log({ module: 'auth' }, `Token cache size: ${stats.size} entries`);
+        log({ module: 'auth' }, `Token cache cleanup complete. Size: ${stats.size} entries`);
+    }
+
+    /** Starts a recurring interval that calls cleanup() every TTL/4 (6 hours). */
+    startPeriodicCleanup(): void {
+        if (this.cleanupTimer) return;
+        this.cleanupTimer = setInterval(() => this.cleanup(), AuthModule.TOKEN_CACHE_TTL_MS / 4);
+    }
+
+    /** Stops the periodic cleanup interval. */
+    stopPeriodicCleanup(): void {
+        if (this.cleanupTimer) {
+            clearInterval(this.cleanupTimer);
+            this.cleanupTimer = null;
+        }
     }
 }
 

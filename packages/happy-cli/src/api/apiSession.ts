@@ -190,17 +190,32 @@ export class ApiSessionClient extends EventEmitter {
                         return;
                     }
                     const body = decrypt(this.encryptionKey, this.encryptionVariant, decodeBase64(data.body.message.content.c));
+                    if (body === null) {
+                        logger.debug('[SOCKET] [UPDATE] Failed to decrypt message', { seq: messageSeq });
+                        return;
+                    }
                     logger.debugLargeJson('[SOCKET] [UPDATE] Received update:', body)
                     this.routeIncomingMessage(body);
                     this.lastSeq = messageSeq;
                 } else if (data.body.t === 'update-session') {
                     if (data.body.metadata && data.body.metadata.version > this.metadataVersion) {
-                        this.metadata = decrypt(this.encryptionKey, this.encryptionVariant, decodeBase64(data.body.metadata.value));
-                        this.metadataVersion = data.body.metadata.version;
+                        const decryptedMetadata = decrypt(this.encryptionKey, this.encryptionVariant, decodeBase64(data.body.metadata.value));
+                        if (decryptedMetadata !== null) {
+                            this.metadata = decryptedMetadata;
+                            this.metadataVersion = data.body.metadata.version;
+                        }
                     }
                     if (data.body.agentState && data.body.agentState.version > this.agentStateVersion) {
-                        this.agentState = data.body.agentState.value ? decrypt(this.encryptionKey, this.encryptionVariant, decodeBase64(data.body.agentState.value)) : null;
-                        this.agentStateVersion = data.body.agentState.version;
+                        if (data.body.agentState.value) {
+                            const decryptedState = decrypt(this.encryptionKey, this.encryptionVariant, decodeBase64(data.body.agentState.value));
+                            if (decryptedState !== null) {
+                                this.agentState = decryptedState;
+                                this.agentStateVersion = data.body.agentState.version;
+                            }
+                        } else {
+                            this.agentState = null;
+                            this.agentStateVersion = data.body.agentState.version;
+                        }
                     }
                 } else if (data.body.t === 'update-machine') {
                     // Session clients shouldn't receive machine updates - log warning

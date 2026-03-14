@@ -219,7 +219,18 @@ class Sync {
         ]).then(() => {
             storage.getState().applyReady();
         }).catch((error) => {
-            console.error('Failed to load initial data:', error);
+            console.error('Failed to load initial data, retrying:', error);
+            this.sessionsSync.invalidate();
+            this.machinesSync.invalidate();
+            Promise.all([
+                this.sessionsSync.awaitQueue(),
+                this.machinesSync.awaitQueue()
+            ]).then(() => {
+                storage.getState().applyReady();
+            }).catch((retryError) => {
+                console.error('Retry also failed, marking ready anyway:', retryError);
+                storage.getState().applyReady();
+            });
         });
     }
 

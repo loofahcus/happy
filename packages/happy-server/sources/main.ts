@@ -19,12 +19,15 @@ async function main() {
         await db.$disconnect();
     });
     onShutdown('activity-cache', async () => {
-        activityCache.shutdown();
+        await activityCache.shutdown();
     });
     if (process.env.REDIS_URL) {
         const { Redis } = await import('ioredis');
         const redis = new Redis(process.env.REDIS_URL);
         await redis.ping();
+        onShutdown('redis', async () => {
+            await redis.quit();
+        });
     }
 
     // Initialize auth module

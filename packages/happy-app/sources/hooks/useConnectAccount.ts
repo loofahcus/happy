@@ -27,10 +27,14 @@ export function useConnectAccount(options?: UseConnectAccountOptions) {
         
         setIsLoading(true);
         try {
+            if (!auth.credentials) {
+                Modal.alert(t('common.error'), 'Not authenticated', [{ text: t('common.ok') }]);
+                return false;
+            }
             const tail = url.slice('happy:///account?'.length);
             const publicKey = decodeBase64(tail, 'base64url');
-            const response = encryptBox(decodeBase64(auth.credentials!.secret, 'base64url'), publicKey);
-            await authAccountApprove(auth.credentials!.token, publicKey, response);
+            const response = encryptBox(decodeBase64(auth.credentials.secret, 'base64url'), publicKey);
+            await authAccountApprove(auth.credentials.token, publicKey, response);
             
             Modal.alert(t('common.success'), t('modals.deviceLinkedSuccessfully'), [
                 { 

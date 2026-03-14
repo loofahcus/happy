@@ -238,16 +238,18 @@ class ActivityCache {
         }
     }
 
-    shutdown(): void {
+    async shutdown(): Promise<void> {
         if (this.batchTimer) {
             clearInterval(this.batchTimer);
             this.batchTimer = null;
         }
         
         // Flush any remaining updates
-        this.flushPendingUpdates().catch(error => {
+        try {
+            await this.flushPendingUpdates();
+        } catch (error) {
             log({ module: 'session-cache', level: 'error' }, `Error flushing final updates: ${error}`);
-        });
+        }
     }
 }
 

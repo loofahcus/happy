@@ -146,34 +146,30 @@ export async function listSessions(
     config: Config,
     creds: Credentials,
 ): Promise<DecryptedSession[]> {
-    let data: { sessions: RawSession[] };
     try {
         const resp = await axios.get(`${config.serverUrl}/v1/sessions`, {
             headers: authHeaders(creds),
         });
-        data = resp.data as { sessions: RawSession[] };
+        const data = resp.data as { sessions: RawSession[] };
+        return data.sessions.map(raw => decryptSession(raw, creds));
     } catch (err) {
         handleApiError(err, 'listing sessions');
     }
-
-    return data.sessions.map(raw => decryptSession(raw, creds));
 }
 
 export async function listActiveSessions(
     config: Config,
     creds: Credentials,
 ): Promise<DecryptedSession[]> {
-    let data: { sessions: RawSession[] };
     try {
         const resp = await axios.get(`${config.serverUrl}/v2/sessions/active`, {
             headers: authHeaders(creds),
         });
-        data = resp.data as { sessions: RawSession[] };
+        const data = resp.data as { sessions: RawSession[] };
+        return data.sessions.map(raw => decryptSession(raw, creds));
     } catch (err) {
         handleApiError(err, 'listing active sessions');
     }
-
-    return data.sessions.map(raw => decryptSession(raw, creds));
 }
 
 export async function createSession(
@@ -195,7 +191,6 @@ export async function createSession(
     const encryptedMetadata = encryptWithDataKey(opts.metadata, sessionKey);
     const metadataBase64 = encodeBase64(encryptedMetadata);
 
-    let data: { session: RawSession };
     try {
         const resp = await axios.post(
             `${config.serverUrl}/v1/sessions`,
@@ -206,13 +201,12 @@ export async function createSession(
             },
             { headers: authHeaders(creds) },
         );
-        data = resp.data as { session: RawSession };
+        const data = resp.data as { session: RawSession };
+        const decrypted = decryptSession(data.session, creds);
+        return { ...decrypted, sessionKey: decrypted.encryption.key };
     } catch (err) {
         handleApiError(err, 'creating session');
     }
-
-    const decrypted = decryptSession(data.session, creds);
-    return { ...decrypted, sessionKey: decrypted.encryption.key };
 }
 
 export async function deleteSession(
@@ -235,23 +229,21 @@ export async function getSessionMessages(
     sessionId: string,
     encryption: SessionEncryption,
 ): Promise<DecryptedMessage[]> {
-    let data: { messages: RawMessage[] };
     try {
         const resp = await axios.get(
             `${config.serverUrl}/v1/sessions/${encodeURIComponent(sessionId)}/messages`,
             { headers: authHeaders(creds) },
         );
-        data = resp.data as { messages: RawMessage[] };
+        const data = resp.data as { messages: RawMessage[] };
+        return data.messages.map(msg => ({
+            id: msg.id,
+            seq: msg.seq,
+            content: decryptField(msg.content.c, encryption),
+            localId: msg.localId ?? null,
+            createdAt: msg.createdAt,
+            updatedAt: msg.updatedAt,
+        }));
     } catch (err) {
         handleApiError(err, `session ${sessionId} messages`);
     }
-
-    return data.messages.map(msg => ({
-        id: msg.id,
-        seq: msg.seq,
-        content: decryptField(msg.content.c, encryption),
-        localId: msg.localId ?? null,
-        createdAt: msg.createdAt,
-        updatedAt: msg.updatedAt,
-    }));
 }
