@@ -150,11 +150,11 @@ describe.skipIf(!await isServerHealthy())('Daemon Integration Tests', { timeout:
     );
     
     expect(spawnedSession).toBeDefined();
-    expect(spawnedSession.startedBy).toBe('daemon');
+    expect(spawnedSession!.startedBy).toBe('daemon');
     
     // Clean up - stop the spawned session
-    expect(spawnedSession.happySessionId).toBeDefined();
-    await stopDaemonSession(spawnedSession.happySessionId);
+    expect(spawnedSession!.happySessionId).toBeDefined();
+    await stopDaemonSession(spawnedSession!.happySessionId);
   });
 
   it('stress test: spawn / stop', { timeout: 60_000 }, async () => {
@@ -219,14 +219,14 @@ describe.skipIf(!await isServerHealthy())('Daemon Integration Tests', { timeout:
     );
 
     expect(terminalSession).toBeDefined();
-    expect(terminalSession.startedBy).toBe('happy directly - likely by user from terminal');
+    expect(terminalSession!.startedBy).toBe('happy directly - likely by user from terminal');
     
     expect(daemonSession).toBeDefined();
-    expect(daemonSession.startedBy).toBe('daemon');
+    expect(daemonSession!.startedBy).toBe('daemon');
 
     // Clean up both sessions
     await stopDaemonSession('terminal-session-aaa');
-    await stopDaemonSession(daemonSession.happySessionId);
+    await stopDaemonSession(daemonSession!.happySessionId);
     
     // Also kill the terminal process directly to be sure
     try {
