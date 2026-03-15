@@ -209,6 +209,14 @@ function SessionViewLoaded({ sessionId, session }: { sessionId: string, session:
         setLocalSending(false);
     }, [sessionStatus.state]);
 
+    // Safety timeout: reset localSending if server never starts thinking
+    // (e.g. commands like /clear that do not trigger AI processing)
+    React.useEffect(() => {
+        if (!localSending) return;
+        const timer = setTimeout(() => setLocalSending(false), 5000);
+        return () => clearTimeout(timer);
+    }, [localSending]);
+
 
     // Subscribe to send actions from child components (PermissionFooter, AskUserQuestionView)
     const handleSendAction = React.useCallback(() => {
