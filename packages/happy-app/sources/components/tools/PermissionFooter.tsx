@@ -5,7 +5,7 @@ import { sessionAllow, sessionDeny } from '@/sync/ops';
 import { useUnistyles } from 'react-native-unistyles';
 import { storage } from '@/sync/storage';
 import { t } from '@/text';
-import { notifySendAction } from '@/hooks/useSendLock';
+import { notifySendAction, useSendLocked } from '@/hooks/useSendLock';
 
 interface PermissionFooterProps {
     permission: {
@@ -30,6 +30,7 @@ export const PermissionFooter: React.FC<PermissionFooterProps> = ({ permission, 
     
     // Check if this is a Codex session - check both metadata.flavor and tool name prefix
     const isCodex = metadata?.flavor === 'codex' || toolName.startsWith('Codex');
+    const isSendLocked = useSendLocked(sessionId);
 
     const handleApprove = async () => {
         if (permission.status !== 'pending' || loadingButton !== null || loadingAllEdits || loadingForSession) return;
@@ -276,10 +277,10 @@ export const PermissionFooter: React.FC<PermissionFooterProps> = ({ permission, 
                             styles.button,
                             isPending && styles.buttonAllow,
                             isCodexApproved && styles.buttonSelected,
-                            (isCodexAborted || isCodexApprovedForSession) && styles.buttonInactive
+                            (isCodexAborted || isCodexApprovedForSession || (isSendLocked && isPending)) && styles.buttonInactive
                         ]}
                         onPress={handleCodexApprove}
-                        disabled={!isPending || loadingButton !== null || loadingForSession}
+                        disabled={!isPending || loadingButton !== null || loadingForSession || isSendLocked}
                         activeOpacity={isPending ? 0.7 : 1}
                     >
                         {loadingButton === 'allow' && isPending ? (
@@ -305,10 +306,10 @@ export const PermissionFooter: React.FC<PermissionFooterProps> = ({ permission, 
                             styles.button,
                             isPending && styles.buttonForSession,
                             isCodexApprovedForSession && styles.buttonSelected,
-                            (isCodexAborted || isCodexApproved) && styles.buttonInactive
+                            (isCodexAborted || isCodexApproved || (isSendLocked && isPending)) && styles.buttonInactive
                         ]}
                         onPress={handleCodexApproveForSession}
-                        disabled={!isPending || loadingButton !== null || loadingForSession}
+                        disabled={!isPending || loadingButton !== null || loadingForSession || isSendLocked}
                         activeOpacity={isPending ? 0.7 : 1}
                     >
                         {loadingForSession && isPending ? (
@@ -334,10 +335,10 @@ export const PermissionFooter: React.FC<PermissionFooterProps> = ({ permission, 
                             styles.button,
                             isPending && styles.buttonDeny,
                             isCodexAborted && styles.buttonSelected,
-                            (isCodexApproved || isCodexApprovedForSession) && styles.buttonInactive
+                            (isCodexApproved || isCodexApprovedForSession || (isSendLocked && isPending)) && styles.buttonInactive
                         ]}
                         onPress={handleCodexAbort}
-                        disabled={!isPending || loadingButton !== null || loadingForSession}
+                        disabled={!isPending || loadingButton !== null || loadingForSession || isSendLocked}
                         activeOpacity={isPending ? 0.7 : 1}
                     >
                         {loadingButton === 'abort' && isPending ? (
@@ -370,10 +371,10 @@ export const PermissionFooter: React.FC<PermissionFooterProps> = ({ permission, 
                         styles.button,
                         isPending && styles.buttonAllow,
                         isApprovedViaAllow && styles.buttonSelected,
-                        (isDenied || isApprovedViaAllEdits || isApprovedForSession) && styles.buttonInactive
+                        (isDenied || isApprovedViaAllEdits || isApprovedForSession || (isSendLocked && isPending)) && styles.buttonInactive
                     ]}
                     onPress={handleApprove}
-                    disabled={!isPending || loadingButton !== null || loadingAllEdits || loadingForSession}
+                    disabled={!isPending || loadingButton !== null || loadingAllEdits || loadingForSession || isSendLocked}
                     activeOpacity={isPending ? 0.7 : 1}
                 >
                     {loadingButton === 'allow' && isPending ? (
@@ -400,10 +401,10 @@ export const PermissionFooter: React.FC<PermissionFooterProps> = ({ permission, 
                             styles.button,
                             isPending && styles.buttonAllowAll,
                             isApprovedViaAllEdits && styles.buttonSelected,
-                            (isDenied || isApprovedViaAllow || isApprovedForSession) && styles.buttonInactive
+                            (isDenied || isApprovedViaAllow || isApprovedForSession || (isSendLocked && isPending)) && styles.buttonInactive
                         ]}
                         onPress={handleApproveAllEdits}
-                        disabled={!isPending || loadingButton !== null || loadingAllEdits || loadingForSession}
+                        disabled={!isPending || loadingButton !== null || loadingAllEdits || loadingForSession || isSendLocked}
                         activeOpacity={isPending ? 0.7 : 1}
                     >
                         {loadingAllEdits && isPending ? (
@@ -431,10 +432,10 @@ export const PermissionFooter: React.FC<PermissionFooterProps> = ({ permission, 
                             styles.button,
                             isPending && styles.buttonForSession,
                             isApprovedForSession && styles.buttonSelected,
-                            (isDenied || isApprovedViaAllow || isApprovedViaAllEdits) && styles.buttonInactive
+                            (isDenied || isApprovedViaAllow || isApprovedViaAllEdits || (isSendLocked && isPending)) && styles.buttonInactive
                         ]}
                         onPress={handleApproveForSession}
-                        disabled={!isPending || loadingButton !== null || loadingAllEdits || loadingForSession}
+                        disabled={!isPending || loadingButton !== null || loadingAllEdits || loadingForSession || isSendLocked}
                         activeOpacity={isPending ? 0.7 : 1}
                     >
                         {loadingForSession && isPending ? (
@@ -460,10 +461,10 @@ export const PermissionFooter: React.FC<PermissionFooterProps> = ({ permission, 
                         styles.button,
                         isPending && styles.buttonDeny,
                         isDenied && styles.buttonSelected,
-                        (isApproved) && styles.buttonInactive
+                        (isApproved || (isSendLocked && isPending)) && styles.buttonInactive
                     ]}
                     onPress={handleDeny}
-                    disabled={!isPending || loadingButton !== null || loadingAllEdits || loadingForSession}
+                    disabled={!isPending || loadingButton !== null || loadingAllEdits || loadingForSession || isSendLocked}
                     activeOpacity={isPending ? 0.7 : 1}
                 >
                     {loadingButton === 'deny' && isPending ? (

@@ -7,7 +7,7 @@ import { sessionAllow } from '@/sync/ops';
 import { sync } from '@/sync/sync';
 import { t } from '@/text';
 import { Ionicons } from '@expo/vector-icons';
-import { notifySendAction } from '@/hooks/useSendLock';
+import { notifySendAction, useSendLocked } from '@/hooks/useSendLock';
 
 interface QuestionOption {
     label: string;
@@ -171,6 +171,7 @@ export const AskUserQuestionView = React.memo<ToolViewProps>(({ tool, sessionId 
     const [selections, setSelections] = React.useState<Map<number, Set<number>>>(new Map());
     const [isSubmitting, setIsSubmitting] = React.useState(false);
     const [isSubmitted, setIsSubmitted] = React.useState(false);
+    const isSendLocked = useSendLocked(sessionId);
 
     // Parse input
     const input = tool.input as AskUserQuestionInput | undefined;
@@ -181,7 +182,7 @@ export const AskUserQuestionView = React.memo<ToolViewProps>(({ tool, sessionId 
     }
 
     const isRunning = tool.state === 'running';
-    const canInteract = isRunning && !isSubmitted;
+    const canInteract = isRunning && !isSubmitted && !isSendLocked;
 
     // Check if all questions have at least one selection
     const allQuestionsAnswered = questions.every((_, qIndex) => {
@@ -347,7 +348,7 @@ export const AskUserQuestionView = React.memo<ToolViewProps>(({ tool, sessionId 
                                 (!allQuestionsAnswered || isSubmitting) && styles.submitButtonDisabled,
                             ]}
                             onPress={handleSubmit}
-                            disabled={!allQuestionsAnswered || isSubmitting}
+                            disabled={!allQuestionsAnswered || isSubmitting || isSendLocked}
                             activeOpacity={0.7}
                         >
                             {isSubmitting ? (

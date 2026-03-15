@@ -14,7 +14,7 @@ import { Deferred } from '@/components/Deferred';
 import { EmptyMessages } from '@/components/EmptyMessages';
 import { VoiceAssistantStatusBar } from '@/components/VoiceAssistantStatusBar';
 import { useDraft } from '@/hooks/useDraft';
-import { useOnSendAction, notifySendAction } from '@/hooks/useSendLock';
+import { useOnSendAction, notifySendAction, setSendLocked } from '@/hooks/useSendLock';
 import { Modal } from '@/modal';
 import { voiceHooks } from '@/realtime/hooks/voiceHooks';
 import { startRealtimeSession, stopRealtimeSession } from '@/realtime/RealtimeSession';
@@ -215,6 +215,10 @@ function SessionViewLoaded({ sessionId, session }: { sessionId: string, session:
         setLocalSending(true);
     }, []);
     useOnSendAction(sessionId, handleSendAction);
+    // Sync lock state so child components (PermissionFooter, AskUserQuestionView) can read it
+    React.useEffect(() => {
+        setSendLocked(sessionId, localSending || sessionStatus.state === 'thinking');
+    }, [sessionId, localSending, sessionStatus.state]);
     // Use draft hook for auto-saving message drafts
     const { clearDraft } = useDraft(sessionId, message, setMessage);
 
