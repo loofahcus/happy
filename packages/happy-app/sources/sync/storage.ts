@@ -424,6 +424,9 @@ export const storage = create<StorageState>()((set, get) => {
                     // This ensures the reducer state is updated with the new AgentState
                     const mergedMessagesMap = { ...existingSessionMessages.messagesMap };
                     processedMessages.forEach(message => {
+                        // Create new object references so React.memo detects changes
+                        // (reducer mutates messages in-place, same reference blocks re-render)
+                        message = "tool" in message && message.tool ? { ...message, tool: { ...message.tool } } : { ...message };
                         mergedMessagesMap[message.id] = message;
                     });
 
@@ -580,6 +583,9 @@ export const storage = create<StorageState>()((set, get) => {
                     const processedMessages = reducerResult.messages;
 
                     processedMessages.forEach(message => {
+                        // Create new object references so React.memo detects changes
+                        // (reducer mutates messages in-place, same reference blocks re-render)
+                        message = "tool" in message && message.tool ? { ...message, tool: { ...message.tool } } : { ...message };
                         messagesMap[message.id] = message;
                     });
 
