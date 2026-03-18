@@ -278,21 +278,59 @@ const stylesheet = StyleSheet.create((theme, runtime) => ({
     sendButtonIcon: {
         color: theme.colors.button.primary.tint,
     },
+    contextHudRow: {
+        flexDirection: "row" as const,
+        alignItems: "center" as const,
+        gap: 6,
+    },
+    contextHudBar: {
+        fontSize: 11,
+        letterSpacing: 0,
+    },
+    contextHudTokens: {
+        fontSize: 11,
+    },
+    contextHudQuota: {
+        fontSize: 11,
+    },
 }));
 
-const getContextWarning = (contextSize: number, alwaysShow: boolean = false, theme: Theme) => {
-    const percentageUsed = (contextSize / MAX_CONTEXT_SIZE) * 100;
-    const percentageRemaining = Math.max(0, Math.min(100, 100 - percentageUsed));
+const formatTokenCount = (n: number): string => {
+    if (n >= 1000000) return `${(n / 1000000).toFixed(1)}M`;
+    if (n >= 1000) return `${Math.round(n / 1000)}k`;
+    return String(n);
+};
 
-    if (percentageRemaining <= 5) {
-        return { text: t('agentInput.context.remaining', { percent: Math.round(percentageRemaining) }), color: theme.colors.warningCritical };
-    } else if (percentageRemaining <= 10) {
-        return { text: t('agentInput.context.remaining', { percent: Math.round(percentageRemaining) }), color: theme.colors.warning };
-    } else if (alwaysShow) {
-        // Show context remaining in neutral color when not near limit
-        return { text: t('agentInput.context.remaining', { percent: Math.round(percentageRemaining) }), color: theme.colors.warning };
+const getContextDisplay = (
+    contextSize: number,
+    usageData: { inputTokens: number; outputTokens: number; cacheCreation: number; cacheRead: number } | undefined,
+    alwaysShow: boolean,
+    theme: Theme
+): {
+    bar: string;
+    percentage: number;
+    color: string;
+    tokens: { input: string; output: string; cache: string } | null;
+} | null => {
+    const percentageUsed = Math.round((contextSize / MAX_CONTEXT_SIZE) * 100);
+    if (percentageUsed === 0 && !alwaysShow) {
+        return null;
     }
-    return null; // No display needed
+    const color = percentageUsed >= 85
+        ? theme.colors.warningCritical
+        : percentageUsed >= 70
+            ? theme.colors.warning
+            : theme.colors.success;
+    const filledCount = Math.min(8, Math.max(0, Math.round((percentageUsed / 100) * 8)));
+    const bar = '█'.repeat(filledCount) + '░'.repeat(8 - filledCount);
+    const tokens = usageData
+        ? {
+            input: formatTokenCount(usageData.inputTokens),
+            output: formatTokenCount(usageData.outputTokens),
+            cache: formatTokenCount(usageData.cacheCreation + usageData.cacheRead),
+        }
+        : null;
+    return { bar, percentage: percentageUsed, color, tokens };
 };
 
 export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, AgentInputProps>((props, ref) => {
@@ -349,10 +387,12 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
         return getBuiltInProfile(props.profileId);
     }, [profiles, props.profileId]);
 
-    // Calculate context warning
-    const contextWarning = props.usageData?.contextSize
-        ? getContextWarning(props.usageData.contextSize, props.alwaysShowContextSize ?? false, theme)
-        : null;
+    // Calculate context display
+    const contextDisplay = React.useMemo(() => (
+        props.usageData?.contextSize !== undefined
+            ? getContextDisplay(props.usageData.contextSize, props.usageData, props.alwaysShowContextSize ?? false, theme)
+            : null
+    ), [props.usageData, props.alwaysShowContextSize, theme]);
 
     const agentInputEnterToSend = useSetting('agentInputEnterToSend');
 
@@ -718,7 +758,7 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
                 )}
 
                 {/* Connection status, context warning, and permission mode */}
-                {(props.connectionStatus || contextWarning || displayPermissionMode || props.modelMode) && (
+                {(props.connectionStatus || contextDisplay || displayPermissionMode || props.modelMode) && (
                     <View style={{
                         flexDirection: 'row',
                         alignItems: 'center',
@@ -813,14 +853,30 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
                                     )}
                                 </>
                             )}
-                            {contextWarning && (
-                                <Text style={{
-                                    fontSize: 11,
-                                    color: contextWarning.color,
-                                    marginLeft: props.connectionStatus ? 8 : 0,
-                                    ...Typography.default()
-                                }}>
-                                    {props.connectionStatus ? '• ' : ''}{contextWarning.text}
+                            {contextDisplay && (
+                                <View style={styles.contextHudRow}>
+                                    <Text
+                                        accessibilityLabel={`Context ${contextDisplay.percentage} percent`}
+                                        style={[styles.contextHudBar, { color: contextDisplay.color }, Typography.default()]}
+                                    >
+                                        {contextDisplay.bar} {contextDisplay.percentage}%
+                                    </Text>
+                                    {contextDisplay.tokens && screenWidth > 500 && (
+                                        <Text style={[styles.contextHudTokens, { color: theme.colors.textSecondary }, Typography.default()]}>
+                                            {`In:${contextDisplay.tokens.input} Out:${contextDisplay.tokens.output} Cache:${contextDisplay.tokens.cache}`}
+                                        </Text>
+                                    )}
+                                </View>
+                            )}
+                            {props.metadata?.quota && (
+                                <Text style={[styles.contextHudQuota, {
+                                    color: props.metadata.quota.percentage >= 80
+                                        ? theme.colors.warningCritical
+                                        : props.metadata.quota.percentage >= 50
+                                            ? theme.colors.warning
+                                            : theme.colors.textSecondary,
+                                }, Typography.default()]}>
+                                    {`$${props.metadata.quota.spend.toFixed(2)}/$${props.metadata.quota.budget.toFixed(2)} ${props.metadata.quota.percentage}%`}
                                 </Text>
                             )}
                         </View>
