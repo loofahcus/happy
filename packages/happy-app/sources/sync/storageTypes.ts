@@ -48,6 +48,11 @@ export const MetadataSchema = z.object({
         percentage: z.number(),
         fetchedAt: z.number(),
     }).nullish(),
+    contextWindow: z.object({
+        total: z.number(),
+        used: z.number(),
+        updatedAt: z.number(),
+    }).nullish(),
 });
 
 export type Metadata = z.infer<typeof MetadataSchema>;

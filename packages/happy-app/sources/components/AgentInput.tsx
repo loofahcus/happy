@@ -305,6 +305,7 @@ const getContextDisplay = (
     contextSize: number,
     usageData: { inputTokens: number; outputTokens: number; cacheCreation: number; cacheRead: number } | undefined,
     alwaysShow: boolean,
+    maxContextSize: number,
     theme: Theme
 ): {
     bar: string;
@@ -312,7 +313,7 @@ const getContextDisplay = (
     color: string;
     tokens: { input: string; output: string; cache: string } | null;
 } | null => {
-    const percentageUsed = Math.round((contextSize / MAX_CONTEXT_SIZE) * 100);
+    const percentageUsed = Math.round((contextSize / maxContextSize) * 100);
     if (percentageUsed === 0 && !alwaysShow) {
         return null;
     }
@@ -390,9 +391,9 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
     // Calculate context display
     const contextDisplay = React.useMemo(() => (
         props.usageData?.contextSize !== undefined
-            ? getContextDisplay(props.usageData.contextSize, props.usageData, props.alwaysShowContextSize ?? false, theme)
+            ? getContextDisplay(props.usageData.contextSize, props.usageData, props.alwaysShowContextSize ?? false, props.metadata?.contextWindow?.total ?? MAX_CONTEXT_SIZE, theme)
             : null
-    ), [props.usageData, props.alwaysShowContextSize, theme]);
+    ), [props.usageData, props.alwaysShowContextSize, props.metadata?.contextWindow?.total, theme]);
 
     const agentInputEnterToSend = useSetting('agentInputEnterToSend');
 

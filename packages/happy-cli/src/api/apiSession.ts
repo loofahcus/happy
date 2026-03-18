@@ -383,6 +383,33 @@ export class ApiSessionClient extends EventEmitter {
             }
         }
 
+        // Extract context window from result messages with modelUsage
+        // This provides context window size when /usage command is unavailable
+        const raw = body as any;
+        if (raw.type === 'result' && raw.modelUsage) {
+            try {
+                let contextWindowTotal = 0;
+                let usedTokens = 0;
+                for (const modelData of Object.values(raw.modelUsage) as any[]) {
+                    contextWindowTotal = Math.max(contextWindowTotal, modelData.contextWindow || 0);
+                    usedTokens += (modelData.inputTokens || 0) + (modelData.outputTokens || 0);
+                }
+                if (contextWindowTotal > 0) {
+                    this.updateMetadata((metadata) => ({
+                        ...metadata,
+                        contextWindow: {
+                            total: contextWindowTotal,
+                            used: usedTokens,
+                            updatedAt: Date.now()
+                        }
+                    }));
+                    logger.debug(`[SOCKET] Context window updated: ${usedTokens}/${contextWindowTotal}`);
+                }
+            } catch (error) {
+                logger.debug('[SOCKET] Failed to extract context window:', error);
+            }
+        }
+
         // Update metadata with summary if this is a summary message
         if (body.type === 'summary' && 'summary' in body && 'leafUuid' in body) {
             this.updateMetadata((metadata) => ({

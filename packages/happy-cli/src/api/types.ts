@@ -276,6 +276,11 @@ export type Metadata = {
     percentage: number;
     fetchedAt: number;
   } | null;
+  contextWindow?: {
+    total: number;
+    used: number;
+    updatedAt: number;
+  } | null;
 };
 
 export type AgentState = {
