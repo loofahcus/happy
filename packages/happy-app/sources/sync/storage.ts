@@ -516,6 +516,9 @@ export const storage = create<StorageState>()((set, get) => {
                 // Merge messages
                 const mergedMessagesMap = { ...existingSession.messagesMap };
                 processedMessages.forEach(message => {
+                    // Create new object references so React.memo detects changes
+                    // (reducer mutates messages in-place, same reference blocks re-render)
+                    message = "tool" in message && message.tool ? { ...message, tool: { ...message.tool } } : { ...message };
                     mergedMessagesMap[message.id] = message;
                 });
 
