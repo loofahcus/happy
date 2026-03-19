@@ -78,6 +78,14 @@ export const sessionEventSchema = z.discriminatedUnion('t', [
 
 export type SessionEvent = z.infer<typeof sessionEventSchema>;
 
+export const sessionUsageSchema = z.object({
+  input_tokens: z.number(),
+  output_tokens: z.number(),
+  cache_creation_input_tokens: z.number().optional(),
+  cache_read_input_tokens: z.number().optional(),
+});
+export type SessionUsage = z.infer<typeof sessionUsageSchema>;
+
 export const sessionEnvelopeSchema = z
   .object({
     id: z.string(),
@@ -91,6 +99,7 @@ export const sessionEnvelopeSchema = z
       })
       .optional(),
     ev: sessionEventSchema,
+    usage: sessionUsageSchema.optional(),
   })
   .superRefine((envelope, ctx) => {
     if (envelope.ev.t === 'service' && envelope.role !== 'agent') {
@@ -116,6 +125,7 @@ export type CreateEnvelopeOptions = {
   time?: number;
   turn?: string;
   subagent?: string;
+  usage?: SessionUsage;
 };
 
 export function createEnvelope(role: SessionRole, ev: SessionEvent, opts: CreateEnvelopeOptions = {}): SessionEnvelope {
@@ -125,6 +135,7 @@ export function createEnvelope(role: SessionRole, ev: SessionEvent, opts: Create
     role,
     ...(opts.turn ? { turn: opts.turn } : {}),
     ...(opts.subagent ? { subagent: opts.subagent } : {}),
+    ...(opts.usage ? { usage: opts.usage } : {}),
     ev,
   });
 }

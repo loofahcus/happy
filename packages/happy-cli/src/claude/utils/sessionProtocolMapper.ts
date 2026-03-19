@@ -4,6 +4,7 @@ import {
     createEnvelope,
     type SessionEnvelope,
     type SessionTurnEndStatus,
+    type SessionUsage,
 } from '@slopus/happy-wire';
 
 export type ClaudeSessionProtocolState = {
@@ -469,14 +470,25 @@ function mapClaudeLogMessageToSessionEnvelopesInternal(
         maybeEmitSubagentStart(state, turnId, subagent, envelopes);
         const blocks = Array.isArray(message.message?.content) ? message.message.content : [];
 
+        // Extract usage data from assistant message to include on first content envelope
+        const rawUsage = (message as any).message?.usage;
+        const usage: SessionUsage | undefined = rawUsage && typeof rawUsage.input_tokens === 'number' && typeof rawUsage.output_tokens === 'number'
+            ? { input_tokens: rawUsage.input_tokens, output_tokens: rawUsage.output_tokens, cache_creation_input_tokens: rawUsage.cache_creation_input_tokens, cache_read_input_tokens: rawUsage.cache_read_input_tokens }
+            : undefined;
+        let usageAttached = false;
+
         for (const block of blocks) {
             if (block.type === 'text' && typeof block.text === 'string') {
-                envelopes.push(createEnvelope('agent', { t: 'text', text: block.text }, { turn: turnId, subagent }));
+                const textUsage = !usageAttached ? usage : undefined;
+                usageAttached = usageAttached || !!usage;
+                envelopes.push(createEnvelope('agent', { t: 'text', text: block.text }, { turn: turnId, subagent, usage: textUsage }));
                 continue;
             }
 
             if (block.type === 'thinking' && typeof block.thinking === 'string') {
-                envelopes.push(createEnvelope('agent', { t: 'text', text: block.thinking, thinking: true }, { turn: turnId, subagent }));
+                const thinkingUsage = !usageAttached ? usage : undefined;
+                usageAttached = usageAttached || !!usage;
+                envelopes.push(createEnvelope('agent', { t: 'text', text: block.thinking, thinking: true }, { turn: turnId, subagent, usage: thinkingUsage }));
                 continue;
             }
 
@@ -509,7 +521,8 @@ function mapClaudeLogMessageToSessionEnvelopesInternal(
                     title,
                     description: title,
                     args,
-                }, { turn: turnId, subagent }));
+                }, { turn: turnId, subagent, usage: !usageAttached ? usage : undefined }));
+                usageAttached = usageAttached || !!usage;
                 const buffered = consumeBufferedSubagentMessages(state, call);
                 for (const bufferedMessage of buffered) {
                     const replay = mapClaudeLogMessageToSessionEnvelopesInternal(bufferedMessage, state);

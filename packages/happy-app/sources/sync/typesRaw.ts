@@ -108,6 +108,12 @@ const sessionEnvelopeSchema = z.object({
         message: 'subagent must be a cuid2 value',
     }).optional(),
     ev: sessionEventSchema,
+    usage: z.object({
+        input_tokens: z.number(),
+        output_tokens: z.number(),
+        cache_creation_input_tokens: z.number().optional(),
+        cache_read_input_tokens: z.number().optional(),
+    }).optional(),
 }).superRefine((envelope, ctx) => {
     if (envelope.ev.t === 'service' && envelope.role !== 'agent') {
         ctx.addIssue({
@@ -539,6 +545,7 @@ function normalizeSessionEnvelope(
     const parentUUID = envelope.subagent ?? null;
     const isSidechain = parentUUID !== null;
     const contentUUID = envelope.id;
+    const envelopeUsage: UsageData | undefined = envelope.usage;
 
     if (envelope.ev.t === 'turn-start') {
         return null;
@@ -578,7 +585,8 @@ function normalizeSessionEnvelope(
                 uuid: contentUUID,
                 parentUUID
             }],
-            meta
+            meta,
+            usage: envelopeUsage
         } satisfies NormalizedMessage;
     }
 
@@ -618,7 +626,8 @@ function normalizeSessionEnvelope(
                     parentUUID
                 }
             ],
-            meta
+            meta,
+            usage: envelopeUsage
         } satisfies NormalizedMessage;
     }
 
@@ -638,7 +647,8 @@ function normalizeSessionEnvelope(
                 uuid: contentUUID,
                 parentUUID
             }],
-            meta
+            meta,
+            usage: envelopeUsage
         } satisfies NormalizedMessage;
     }
 
@@ -657,7 +667,8 @@ function normalizeSessionEnvelope(
                 uuid: contentUUID,
                 parentUUID
             }],
-            meta
+            meta,
+            usage: envelopeUsage
         } satisfies NormalizedMessage;
     }
 
@@ -694,7 +705,8 @@ function normalizeSessionEnvelope(
                 uuid: contentUUID,
                 parentUUID
             }],
-            meta
+            meta,
+            usage: envelopeUsage
         } satisfies NormalizedMessage;
     }
 
