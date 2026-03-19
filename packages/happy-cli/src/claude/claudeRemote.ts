@@ -1,5 +1,5 @@
 import { EnhancedMode } from "./loop";
-import { query, type QueryOptions, type SDKMessage, type SDKSystemMessage, AbortError, SDKUserMessage } from '@/claude/sdk'
+import { query, type QueryOptions, type SDKMessage, type SDKSystemMessage, type SDKAssistantMessage, AbortError, SDKUserMessage } from '@/claude/sdk'
 import { mapToClaudeMode } from "./utils/permissionMode";
 import { claudeCheckSession } from "./utils/claudeCheckSession";
 import { join, resolve } from 'node:path';
@@ -161,6 +161,12 @@ export async function claudeRemote(opts: {
         }
     };
 
+    // Track background tasks (Agent/Bash with run_in_background) to annotate user messages.
+    // When background tasks complete, their notifications are delivered alongside the next
+    // user message in the same turn, which can cause Claude to confuse the user's message
+    // with a background task notification.
+    let hasBackgroundTasks = false;
+
     // Push initial message
     let messages = new PushableAsyncIterable<SDKUserMessage>();
     messages.push({
@@ -186,6 +192,22 @@ export async function claudeRemote(opts: {
 
             // Handle messages
             opts.onMessage(message);
+
+            // Detect background task launches to annotate subsequent user messages
+            if (message.type === 'assistant') {
+                const assistantMsg = message as SDKAssistantMessage;
+                if (assistantMsg.message?.content && Array.isArray(assistantMsg.message.content)) {
+                    for (const block of assistantMsg.message.content) {
+                        if (block.type === 'tool_use' && block.input) {
+                            const input = block.input as Record<string, unknown>;
+                            if (input.run_in_background === true) {
+                                hasBackgroundTasks = true;
+                                logger.debug(`[claudeRemote] Background task detected: ${block.name} (${block.id})`);
+                            }
+                        }
+                    }
+                }
+            }
 
             // Handle special system messages
             if (message.type === 'system' && message.subtype === 'init') {
@@ -229,7 +251,13 @@ export async function claudeRemote(opts: {
                     return;
                 }
                 mode = next.mode;
-                messages.push({ type: 'user', message: { role: 'user', content: next.message } });
+                let userContent = next.message;
+                if (hasBackgroundTasks) {
+                    userContent = `<remote-user-message>\n${next.message}\n</remote-user-message>\n\nIMPORTANT: The above is a NEW message from the remote user, sent from the webapp. It is NOT a notification from a background task. If you also received background task notifications in this turn, process them separately - do NOT confuse the user's message with those notifications. Respond to the user's message directly.`;
+                    hasBackgroundTasks = false;
+                    logger.debug('[claudeRemote] Annotated user message to distinguish from background task notification');
+                }
+                messages.push({ type: 'user', message: { role: 'user', content: userContent } });
             }
 
             // Handle tool result
