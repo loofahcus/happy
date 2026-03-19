@@ -877,7 +877,7 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
                                             ? theme.colors.warning
                                             : theme.colors.textSecondary,
                                 }, Typography.default()]}>
-                                    {`$${props.metadata.quota.spend.toFixed(2)}/$${props.metadata.quota.budget.toFixed(2)} ${props.metadata.quota.percentage}%`}
+                                    {`$${props.metadata.quota.spend.toFixed(2)}/$${props.metadata.quota.budget.toFixed(2)}`}
                                 </Text>
                             )}
                         </View>
