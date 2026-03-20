@@ -319,8 +319,8 @@ const getContextDisplay = (
     }
     const color = percentageUsed >= 85
         ? theme.colors.warningCritical
-        : percentageUsed >= 70
-            ? theme.colors.warning
+        : percentageUsed >= 65
+            ? '#E5A000'
             : theme.colors.success;
     const filledCount = Math.min(8, Math.max(0, Math.round((percentageUsed / 100) * 8)));
     const bar = '█'.repeat(filledCount) + '░'.repeat(8 - filledCount);
@@ -874,7 +874,7 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
                                     color: props.metadata.quota.percentage >= 80
                                         ? theme.colors.warningCritical
                                         : props.metadata.quota.percentage >= 50
-                                            ? theme.colors.warning
+                                            ? '#E5A000'
                                             : theme.colors.textSecondary,
                                 }, Typography.default()]}>
                                     {`$${props.metadata.quota.spend.toFixed(2)}/$${props.metadata.quota.budget.toFixed(2)}`}
