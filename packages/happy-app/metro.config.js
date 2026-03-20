@@ -20,4 +20,11 @@ config.transformer.getTransformOptions = async () => ({
   },
 });
 
+// Exclude test files from Metro bundling
+config.resolver.blockList = [
+  /\.spec\.ts$/,
+  /\.test\.ts$/,
+  /\/__testdata__\//,
+];
+
 module.exports = config;

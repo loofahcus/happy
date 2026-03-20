@@ -798,7 +798,7 @@ export function normalizeRawMessage(id: string, localId: string | null, createdA
                     isSidechain: raw.content.data.isSidechain ?? false,
                     content,
                     meta: raw.meta,
-                    usage: raw.content.data.message.usage
+                    usage: raw.content.data.message.usage,
                 };
             } else if (raw.content.data.type === 'user') {
                 if (!raw.content.data.uuid) {
