@@ -1,5 +1,4 @@
 import { ScrollViewStyleReset } from 'expo-router/html';
-import '../unistyles';
 
 // This file is web-only and used to configure the root HTML for every
 // web page during static rendering.
@@ -21,7 +20,12 @@ export default function Root({ children }: { children: React.ReactNode }) {
 
         {/* Using raw CSS styles as an escape-hatch to ensure the background color never flickers in dark-mode. */}
         <style dangerouslySetInnerHTML={{ __html: responsiveBackground }} />
-        {/* Add any additional <head> elements that you want globally available on web... */}
+        {/* PWA: apple-touch-icon for iOS "Add to Home Screen" */}
+        <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+        <link rel="manifest" href="/manifest.webmanifest" />
+        <meta name="apple-mobile-web-app-capable" content="yes" />
+        <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+        <meta name="theme-color" content="#18171C" />
       </head>
       <body>{children}</body>
     </html>
