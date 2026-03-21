@@ -174,15 +174,18 @@ export async function claudeRemote(opts: {
     let pendingUserMessage: { message: string, mode: EnhancedMode } | null = null;
     let isDrainTurn = false; // When true, suppress onMessage to hide drain turns from webapp
 
-    // Push initial message
+    // Push initial message (skip for resume with empty message - just load context)
     let messages = new PushableAsyncIterable<SDKUserMessage>();
-    messages.push({
-        type: 'user',
-        message: {
-            role: 'user',
-            content: initial.message,
-        },
-    });
+    const isResumeWithoutPrompt = !!startFrom && !initial.message.trim();
+    if (!isResumeWithoutPrompt) {
+        messages.push({
+            type: 'user',
+            message: {
+                role: 'user',
+                content: initial.message,
+            },
+        });
+    }
 
     // Start the loop
     const response = query({

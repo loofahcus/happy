@@ -73,6 +73,7 @@ interface AgentInputProps {
     onPathClick?: () => void;
     isSendDisabled?: boolean;
     isSending?: boolean;
+    allowEmptySend?: boolean;
     minHeight?: number;
     profileId?: string | null;
     onProfileClick?: () => void;
@@ -542,7 +543,7 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
         // Original key handling
         if (Platform.OS === 'web') {
             if (agentInputEnterToSend && event.key === 'Enter' && !event.shiftKey && !props.isSendDisabled) {
-                if (props.value.trim()) {
+                if (props.value.trim() || props.allowEmptySend) {
                     props.onSend();
                     return true; // Key was handled
                 }
@@ -1158,7 +1159,7 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
                                 <View
                                     style={[
                                         styles.sendButton,
-                                        (!props.isSendDisabled && (hasText || props.isSending || (props.onMicPress && !props.isMicActive)))
+                                        (!props.isSendDisabled && (hasText || props.allowEmptySend || props.isSending || (props.onMicPress && !props.isMicActive)))
                                             ? styles.sendButtonActive
                                             : styles.sendButtonInactive
                                     ]}
@@ -1174,13 +1175,13 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
                                         hitSlop={{ top: 5, bottom: 10, left: 0, right: 0 }}
                                         onPress={() => {
                                             hapticsLight();
-                                            if (hasText) {
+                                            if (hasText || props.allowEmptySend) {
                                                 props.onSend();
                                             } else {
                                                 props.onMicPress?.();
                                             }
                                         }}
-                                        disabled={props.isSendDisabled || props.isSending || (!hasText && !props.onMicPress)}
+                                        disabled={props.isSendDisabled || props.isSending || (!hasText && !props.onMicPress && !props.allowEmptySend)}
                                     >
                                         {props.isSending ? (
                                             <ActivityIndicator

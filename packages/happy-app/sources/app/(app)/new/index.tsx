@@ -466,6 +466,11 @@ function NewSessionWizard() {
     React.useEffect(() => {
         if (!resumableSession) setResumeEnabled(false);
     }, [resumableSession]);
+
+    // Clear text when resume is enabled (user needs to see context first)
+    React.useEffect(() => {
+        if (resumeEnabled) setSessionPrompt('');
+    }, [resumeEnabled]);
     // Refs for scrolling to sections
     const scrollViewRef = React.useRef<ScrollView>(null);
     const profileSectionRef = React.useRef<View>(null);
@@ -1077,9 +1082,11 @@ function NewSessionWizard() {
                     storage.getState().updateSessionModelMode(result.sessionId, modelMode.key);
                 }
 
-                // Send initial message if provided
+                // Send initial message if provided, or empty trigger for resume
                 if (sessionPrompt.trim()) {
                     await sync.sendMessage(result.sessionId, sessionPrompt);
+                } else if (resumeEnabled) {
+                    await sync.sendMessage(result.sessionId, '');
                 }
 
                 router.replace(`/session/${result.sessionId}`, {
@@ -1215,17 +1222,18 @@ function NewSessionWizard() {
                                 onSend={handleCreateSession}
                                 isSendDisabled={!canCreate}
                                 isSending={isCreating}
+                                allowEmptySend={resumeEnabled}
                                 placeholder="What would you like to work on?"
                                 autocompletePrefixes={[]}
                                 autocompleteSuggestions={async () => []}
                                 agentType={agentType}
                                 onAgentClick={handleAgentClick}
                                 permissionMode={permissionMode}
-                                availableModes={availableModes}
-                                onPermissionModeChange={handlePermissionModeChange}
+                                availableModes={resumeEnabled ? [] : availableModes}
+                                onPermissionModeChange={resumeEnabled ? undefined : handlePermissionModeChange}
                                 modelMode={modelMode}
-                                availableModels={availableModels}
-                                onModelModeChange={handleModelModeChange}
+                                availableModels={resumeEnabled ? [] : availableModels}
+                                onModelModeChange={resumeEnabled ? undefined : handleModelModeChange}
                                 connectionStatus={connectionStatus}
                                 machineName={selectedMachine?.metadata?.displayName || selectedMachine?.metadata?.host}
                                 onMachineClick={handleMachineClick}
@@ -1993,17 +2001,18 @@ function NewSessionWizard() {
                             onSend={handleCreateSession}
                             isSendDisabled={!canCreate}
                             isSending={isCreating}
+                            allowEmptySend={resumeEnabled}
                             placeholder="What would you like to work on?"
                             autocompletePrefixes={[]}
                             autocompleteSuggestions={async () => []}
                             agentType={agentType}
                             onAgentClick={handleAgentInputAgentClick}
                             permissionMode={permissionMode}
-                            availableModes={availableModes}
-                            onPermissionModeChange={handleAgentInputPermissionChange}
+                            availableModes={resumeEnabled ? [] : availableModes}
+                            onPermissionModeChange={resumeEnabled ? undefined : handleAgentInputPermissionChange}
                             modelMode={modelMode}
-                            availableModels={availableModels}
-                            onModelModeChange={handleModelModeChange}
+                            availableModels={resumeEnabled ? [] : availableModels}
+                            onModelModeChange={resumeEnabled ? undefined : handleModelModeChange}
                             connectionStatus={connectionStatus}
                             machineName={selectedMachine?.metadata?.displayName || selectedMachine?.metadata?.host}
                             onMachineClick={handleAgentInputMachineClick}
