@@ -161,11 +161,18 @@ export async function claudeRemote(opts: {
         }
     };
 
-    // Track background tasks (Agent/Bash with run_in_background) to annotate user messages.
-    // When background tasks complete, their notifications are delivered alongside the next
-    // user message in the same turn, which can cause Claude to confuse the user's message
-    // with a background task notification.
-    let hasBackgroundTasks = false;
+    // Background task tracking and hold-and-drain mechanism.
+    // When Claude Code has pending background task notifications, they are delivered
+    // one-at-a-time as part of each new turn. Without intervention, each notification
+    // requires a separate user message to drain. The hold-and-drain mechanism:
+    // 1. Detects task_notification turns via system message subtype
+    // 2. Automatically pushes synthetic "continue" messages to drain all notifications
+    // 3. Holds the real user message until all notifications are processed
+    // 4. Only then sends the real user message for a proper response
+    let pendingBackgroundTaskCount = 0;
+    let isTaskNotificationTurn = false;
+    let pendingUserMessage: { message: string, mode: EnhancedMode } | null = null;
+    let isDrainTurn = false; // When true, suppress onMessage to hide drain turns from webapp
 
     // Push initial message
     let messages = new PushableAsyncIterable<SDKUserMessage>();
@@ -190,10 +197,22 @@ export async function claudeRemote(opts: {
         for await (const message of response) {
             logger.debugLargeJson(`[claudeRemote] Message ${message.type}`, message);
 
-            // Handle messages
-            opts.onMessage(message);
+            // Track background task lifecycle and detect task_notification turns
+            if (message.type === 'system') {
+                const subtype = (message as any).subtype;
+                logger.debug(`[claudeRemote] System message subtype: ${subtype}, keys: ${Object.keys(message).join(',')}`); 
+                if (subtype === 'task_started') {
+                    pendingBackgroundTaskCount++;
+                    logger.debug(`[claudeRemote] Background task started, pending count: ${pendingBackgroundTaskCount}`);
+                }
+                if (subtype === 'task_notification') {
+                    pendingBackgroundTaskCount = Math.max(0, pendingBackgroundTaskCount - 1);
+                    isTaskNotificationTurn = true;
+                    logger.debug(`[claudeRemote] Task notification received, pending count: ${pendingBackgroundTaskCount}, marking turn as task_notification`);
+                }
+            }
 
-            // Detect background task launches to annotate subsequent user messages
+            // Detect background task launches from assistant tool_use blocks
             if (message.type === 'assistant') {
                 const assistantMsg = message as SDKAssistantMessage;
                 if (assistantMsg.message?.content && Array.isArray(assistantMsg.message.content)) {
@@ -201,13 +220,15 @@ export async function claudeRemote(opts: {
                         if (block.type === 'tool_use' && block.input) {
                             const input = block.input as Record<string, unknown>;
                             if (input.run_in_background === true) {
-                                hasBackgroundTasks = true;
                                 logger.debug(`[claudeRemote] Background task detected: ${block.name} (${block.id})`);
                             }
                         }
                     }
                 }
             }
+
+            // Handle messages - suppress during drain turns
+            if (!isDrainTurn) { opts.onMessage(message); }
 
             // Handle special system messages
             if (message.type === 'system' && message.subtype === 'init') {
@@ -227,10 +248,9 @@ export async function claudeRemote(opts: {
                 }
             }
 
-            // Handle result messages
+            // Handle result messages - with hold-and-drain for background task notifications
             if (message.type === 'result') {
                 updateThinking(false);
-                logger.debug('[claudeRemote] Result received, exiting claudeRemote');
 
                 // Send completion messages
                 if (isCompactCommand) {
@@ -241,23 +261,61 @@ export async function claudeRemote(opts: {
                     isCompactCommand = false;
                 }
 
-                // Send ready event
-                opts.onReady();
+                // Branch 1: This result is from a background task notification turn.
+                // Auto-drain by pushing a synthetic continue message instead of blocking.
+                if (isTaskNotificationTurn) {
+                    isTaskNotificationTurn = false;
+                    // If no more pending tasks and we have a held user message, skip drain and send it directly
+                    if (pendingBackgroundTaskCount === 0 && pendingUserMessage) {
+                        const held = pendingUserMessage;
+                        pendingUserMessage = null;
+                        isDrainTurn = false;
+                        mode = held.mode;
+                        logger.debug(`[claudeRemote] Last task notification processed, sending held user message directly`);
+                        messages.push({ type: 'user', message: { role: 'user', content: held.message } });
+                        updateThinking(true);
+                        continue;
+                    }
+                    isDrainTurn = true;
+                    logger.debug(`[claudeRemote] Task notification turn result - auto-draining (pending tasks: ${pendingBackgroundTaskCount}, has pending user msg: ${!!pendingUserMessage})`);
+                    messages.push({ type: 'user', message: { role: 'user', content: '.' } });
+                    updateThinking(true);
+                    continue;
+                }
 
-                // Push next message
+                // Branch 2: All notifications drained, now send the held user message.
+                if (pendingUserMessage) {
+                    const held = pendingUserMessage;
+                    pendingUserMessage = null;
+                    isDrainTurn = false;
+                    mode = held.mode;
+                    logger.debug('[claudeRemote] All task notifications drained, sending held user message');
+                    messages.push({ type: 'user', message: { role: 'user', content: held.message } });
+                    updateThinking(true);
+                    continue;
+                }
+
+                // Branch 3: Normal result - wait for user input.
+                logger.debug('[claudeRemote] Result received, waiting for next message');
+                opts.onReady();
                 const next = await opts.nextMessage();
                 if (!next) {
                     messages.end();
                     return;
                 }
                 mode = next.mode;
-                let userContent = next.message;
-                if (hasBackgroundTasks) {
-                    userContent = `<remote-user-message>\n${next.message}\n</remote-user-message>\n\nIMPORTANT: The above is a NEW message from the remote user, sent from the webapp. It is NOT a notification from a background task. If you also received background task notifications in this turn, process them separately - do NOT confuse the user's message with those notifications. Respond to the user's message directly.`;
-                    hasBackgroundTasks = false;
-                    logger.debug('[claudeRemote] Annotated user message to distinguish from background task notification');
+
+                // If there are pending background tasks, hold the user message and drain first.
+                if (pendingBackgroundTaskCount > 0) {
+                    pendingUserMessage = next;
+                    isDrainTurn = true;
+                    logger.debug(`[claudeRemote] Holding user message to drain ${pendingBackgroundTaskCount} pending background task(s)`);
+                    messages.push({ type: 'user', message: { role: 'user', content: '.' } });
+                    updateThinking(true);
+                } else {
+                    isDrainTurn = false;
+                    messages.push({ type: 'user', message: { role: 'user', content: next.message } });
                 }
-                messages.push({ type: 'user', message: { role: 'user', content: userContent } });
             }
 
             // Handle tool result
