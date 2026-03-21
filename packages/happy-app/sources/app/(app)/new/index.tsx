@@ -1177,6 +1177,28 @@ function NewSessionWizard() {
                         </View>
                     )}
 
+
+                    {/* Resume session toggle */}
+                    <View style={{ paddingHorizontal: screenWidth > 700 ? 16 : 8, marginBottom: 8 }}>
+                        <View style={{ maxWidth: layout.maxWidth, width: '100%', alignSelf: 'center' }}>
+                            <ItemGroup>
+                                <Item
+                                    title={t("newSession.resumeLastSession")}
+                                    icon={
+                                        <Ionicons
+                                            name="refresh-outline"
+                                            size={20}
+                                            color={resumableSession ? theme.colors.textLink : theme.colors.textSecondary}
+                                        />
+                                    }
+                                    disabled={!resumableSession}
+                                    onPress={() => setResumeEnabled(!resumeEnabled)}
+                                    selected={resumeEnabled}
+                                    showChevron={false}
+                                />
+                            </ItemGroup>
+                        </View>
+                    </View>
                     {/* AgentInput with inline chips - sticky at bottom */}
                     <View style={{ paddingHorizontal: screenWidth > 700 ? 16 : 8, paddingBottom: Math.max(16, safeArea.bottom) }}>
                         <View style={{ maxWidth: layout.maxWidth, width: '100%', alignSelf: 'center' }}>
