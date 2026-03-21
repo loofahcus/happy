@@ -28,7 +28,8 @@ export async function extractSDKMetadata(): Promise<SDKMetadata> {
             options: {
                 allowedTools: ['Bash(echo)'],
                 maxTurns: 1,
-                abort: abortController.signal
+                abort: abortController.signal,
+                noSessionPersistence: true
             }
         })
 
