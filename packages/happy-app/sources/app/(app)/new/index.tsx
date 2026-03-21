@@ -1900,7 +1900,7 @@ function NewSessionWizard() {
 
 
                             {/* Resume session toggle */}
-                            {resumableSession && (
+                            
                                 <ItemGroup>
                                     <Item
                                         title={t("newSession.resumeLastSession")}
@@ -1908,15 +1908,15 @@ function NewSessionWizard() {
                                             <Ionicons
                                                 name="refresh-outline"
                                                 size={20}
-                                                color={theme.colors.textLink}
+                                                color={resumableSession ? theme.colors.textLink : theme.colors.textSecondary}
                                             />
                                         }
+                                        disabled={!resumableSession}
                                         onPress={() => setResumeEnabled(!resumeEnabled)}
                                         selected={resumeEnabled}
                                         showChevron={false}
                                     />
                                 </ItemGroup>
-                            )}
 
                             {/* Section 5: Advanced Options (Collapsible) */}
                             {experimentsEnabled && (
