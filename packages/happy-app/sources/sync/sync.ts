@@ -1859,56 +1859,67 @@ class Sync {
 
             log.log(`🗑️ Session ${sessionId} deleted from local storage`);
         } else if (updateData.body.t === 'update-session') {
-            const session = storage.getState().sessions[updateData.body.id];
-            if (session) {
-                // Get session encryption
-                const sessionEncryption = this.encryption.getSessionEncryption(updateData.body.id);
-                if (!sessionEncryption) {
-                    console.error(`Session encryption not found for ${updateData.body.id} - this should never happen`);
-                    return;
-                }
-
-                const agentState = updateData.body.agentState && sessionEncryption
-                    ? await sessionEncryption.decryptAgentState(updateData.body.agentState.version, updateData.body.agentState.value)
-                    : session.agentState;
-                const metadata = updateData.body.metadata && sessionEncryption
-                    ? await sessionEncryption.decryptMetadata(updateData.body.metadata.version, updateData.body.metadata.value)
-                    : session.metadata;
-
-                this.applySessions([{
-                    ...session,
-                    agentState,
-                    agentStateVersion: updateData.body.agentState
-                        ? updateData.body.agentState.version
-                        : session.agentStateVersion,
-                    metadata,
-                    metadataVersion: updateData.body.metadata
-                        ? updateData.body.metadata.version
-                        : session.metadataVersion,
-                    updatedAt: updateData.createdAt,
-                    seq: updateData.seq
-                }]);
-
-                // Invalidate git status when agent state changes (files may have been modified)
-                if (updateData.body.agentState) {
-                    gitStatusSync.invalidate(updateData.body.id);
-
-                    // Check for new permission requests and notify voice assistant
-                    if (agentState?.requests && Object.keys(agentState.requests).length > 0) {
-                        const requestIds = Object.keys(agentState.requests);
-                        const firstRequest = agentState.requests[requestIds[0]];
-                        const toolName = firstRequest?.tool;
-                        voiceHooks.onPermissionRequested(updateData.body.id, requestIds[0], toolName, firstRequest?.arguments);
+            const sessionId = updateData.body.id;
+            const initialSession = storage.getState().sessions[sessionId];
+            if (initialSession) {
+                try {
+                    // Get session encryption
+                    const sessionEncryption = this.encryption.getSessionEncryption(sessionId);
+                    if (!sessionEncryption) {
+                        console.error(`Session encryption not found for ${sessionId} - this should never happen`);
+                        return;
                     }
 
-                    // Re-fetch messages when control returns to mobile (local -> remote mode switch)
-                    // This catches up on any messages that were exchanged while desktop had control
-                    const wasControlledByUser = session.agentState?.controlledByUser;
-                    const isNowControlledByUser = agentState?.controlledByUser;
-                    if (!wasControlledByUser && isNowControlledByUser) {
-                        log.log(`🔄 Control returned to mobile for session ${updateData.body.id}, re-fetching messages`);
-                        this.onSessionVisible(updateData.body.id);
+                    const agentState = updateData.body.agentState && sessionEncryption
+                        ? await sessionEncryption.decryptAgentState(updateData.body.agentState.version, updateData.body.agentState.value)
+                        : initialSession.agentState;
+                    const metadata = updateData.body.metadata && sessionEncryption
+                        ? await sessionEncryption.decryptMetadata(updateData.body.metadata.version, updateData.body.metadata.value)
+                        : initialSession.metadata;
+
+                    // Re-read session AFTER async decryption to avoid using stale data
+                    // Other handlers (e.g. new-message) may have updated the session during the await
+                    const freshSession = storage.getState().sessions[sessionId] ?? initialSession;
+
+                    this.applySessions([{
+                        ...freshSession,
+                        agentState,
+                        agentStateVersion: updateData.body.agentState
+                            ? updateData.body.agentState.version
+                            : freshSession.agentStateVersion,
+                        metadata,
+                        metadataVersion: updateData.body.metadata
+                            ? updateData.body.metadata.version
+                            : freshSession.metadataVersion,
+                        updatedAt: updateData.createdAt,
+                        seq: updateData.seq
+                    }]);
+
+                    // Invalidate git status when agent state changes (files may have been modified)
+                    if (updateData.body.agentState) {
+                        gitStatusSync.invalidate(sessionId);
+
+                        // Check for new permission requests and notify voice assistant
+                        if (agentState?.requests && Object.keys(agentState.requests).length > 0) {
+                            const requestIds = Object.keys(agentState.requests);
+                            const firstRequest = agentState.requests[requestIds[0]];
+                            const toolName = firstRequest?.tool;
+                            voiceHooks.onPermissionRequested(sessionId, requestIds[0], toolName, firstRequest?.arguments);
+                        }
+
+                        // Re-fetch messages when control returns to mobile (local -> remote mode switch)
+                        // This catches up on any messages that were exchanged while desktop had control
+                        const wasControlledByUser = initialSession.agentState?.controlledByUser;
+                        const isNowControlledByUser = agentState?.controlledByUser;
+                        if (!wasControlledByUser && isNowControlledByUser) {
+                            log.log(`🔄 Control returned to mobile for session ${sessionId}, re-fetching messages`);
+                            this.onSessionVisible(sessionId);
+                        }
                     }
+                } catch (e) {
+                    console.error(`Failed to process update-session for ${sessionId}:`, e);
+                    // On decryption failure, trigger a full re-fetch to recover
+                    this.sessionsSync.invalidate();
                 }
             }
         } else if (updateData.body.t === 'update-account') {

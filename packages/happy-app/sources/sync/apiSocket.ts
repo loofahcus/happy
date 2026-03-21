@@ -247,7 +247,7 @@ class ApiSocket {
             const handler = this.messageHandlers.get(event);
             if (handler) {
                 // console.log(`📥 SyncSocket: Calling handler for '${event}'`);
-                handler(data);
+                Promise.resolve(handler(data)).catch(e => console.error(`Socket handler error for event '${event}':`, e));
             } else {
                 // console.log(`📥 SyncSocket: No handler registered for '${event}'`);
             }
