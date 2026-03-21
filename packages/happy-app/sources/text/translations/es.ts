@@ -288,6 +288,7 @@ export const es: TranslationStructure = {
             success: 'Worktree creado exitosamente',
         },
         resumeLastSession: 'Reanudar última sesión',
+        noResumableSession: 'No hay sesión anterior disponible',
     },
 
     sessionHistory: {

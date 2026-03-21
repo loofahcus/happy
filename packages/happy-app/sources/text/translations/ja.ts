@@ -320,6 +320,7 @@ export const ja: TranslationStructure = {
             success: 'ワークツリーが正常に作成されました',
         },
         resumeLastSession: '前回のセッションを再開',
+        noResumableSession: '再開可能なセッションがありません',
     },
 
     sessionHistory: {

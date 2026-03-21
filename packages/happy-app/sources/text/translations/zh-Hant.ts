@@ -289,6 +289,7 @@ export const zhHant: TranslationStructure = {
             success: 'Worktree 建立成功',
         },
         resumeLastSession: '恢復上次對話',
+        noResumableSession: '沒有可恢復的對話',
     },
 
     sessionHistory: {

@@ -303,6 +303,7 @@ export const en: TranslationStructure = {
             success: 'Worktree created successfully',
         },
         resumeLastSession: 'Resume last session',
+        noResumableSession: 'No previous session available',
     },
 
     sessionHistory: {

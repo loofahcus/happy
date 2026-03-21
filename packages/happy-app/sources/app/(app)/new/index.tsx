@@ -1,5 +1,5 @@
 import React from 'react';
-import { View, Text, Platform, Pressable, useWindowDimensions, ScrollView, TextInput } from 'react-native';
+import { View, Text, Platform, Pressable, useWindowDimensions, ScrollView, TextInput, Switch } from 'react-native';
 import Constants from 'expo-constants';
 import { Typography } from '@/constants/Typography';
 import { useAllMachines, storage, useSetting, useSettingMutable, useSessions } from '@/sync/storage';
@@ -1184,17 +1184,24 @@ function NewSessionWizard() {
                             <ItemGroup>
                                 <Item
                                     title={t("newSession.resumeLastSession")}
+                                    subtitle={!resumableSession ? t("newSession.noResumableSession") : undefined}
                                     icon={
                                         <Ionicons
                                             name="refresh-outline"
                                             size={20}
-                                            color={resumableSession ? theme.colors.textLink : theme.colors.textSecondary}
+                                            color={resumeEnabled ? theme.colors.textLink : theme.colors.textSecondary}
                                         />
                                     }
                                     disabled={!resumableSession}
                                     onPress={() => setResumeEnabled(!resumeEnabled)}
-                                    selected={resumeEnabled}
                                     showChevron={false}
+                                    rightElement={
+                                        <Switch
+                                            value={resumeEnabled}
+                                            onValueChange={(v) => setResumeEnabled(v)}
+                                            disabled={!resumableSession}
+                                        />
+                                    }
                                 />
                             </ItemGroup>
                         </View>
@@ -1926,17 +1933,24 @@ function NewSessionWizard() {
                                 <ItemGroup>
                                     <Item
                                         title={t("newSession.resumeLastSession")}
+                                        subtitle={!resumableSession ? t("newSession.noResumableSession") : undefined}
                                         icon={
                                             <Ionicons
                                                 name="refresh-outline"
                                                 size={20}
-                                                color={resumableSession ? theme.colors.textLink : theme.colors.textSecondary}
+                                                color={resumeEnabled ? theme.colors.textLink : theme.colors.textSecondary}
                                             />
                                         }
                                         disabled={!resumableSession}
                                         onPress={() => setResumeEnabled(!resumeEnabled)}
-                                        selected={resumeEnabled}
                                         showChevron={false}
+                                        rightElement={
+                                            <Switch
+                                                value={resumeEnabled}
+                                                onValueChange={(v) => setResumeEnabled(v)}
+                                                disabled={!resumableSession}
+                                            />
+                                        }
                                     />
                                 </ItemGroup>
 

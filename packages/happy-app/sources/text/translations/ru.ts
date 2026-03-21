@@ -270,6 +270,7 @@ export const ru: TranslationStructure = {
             success: 'Worktree успешно создан',
         },
         resumeLastSession: 'Возобновить последнюю сессию',
+        noResumableSession: 'Нет предыдущей сессии',
     },
 
     sessionHistory: {

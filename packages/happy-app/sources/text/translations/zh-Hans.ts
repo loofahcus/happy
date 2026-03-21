@@ -290,6 +290,7 @@ export const zhHans: TranslationStructure = {
             success: 'Worktree 创建成功',
         },
         resumeLastSession: '恢复上次会话',
+        noResumableSession: '没有可恢复的会话',
     },
 
     sessionHistory: {
