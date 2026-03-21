@@ -278,7 +278,7 @@ export async function claudeRemote(opts: {
                     }
                     isDrainTurn = true;
                     logger.debug(`[claudeRemote] Task notification turn result - auto-draining (pending tasks: ${pendingBackgroundTaskCount}, has pending user msg: ${!!pendingUserMessage})`);
-                    messages.push({ type: 'user', message: { role: 'user', content: '.' } });
+                    messages.push({ type: 'user', message: { role: 'user', content: 'This is a drain message, just ignore it and respond with a simple `OK`' } });
                     updateThinking(true);
                     continue;
                 }
@@ -310,7 +310,7 @@ export async function claudeRemote(opts: {
                     pendingUserMessage = next;
                     isDrainTurn = true;
                     logger.debug(`[claudeRemote] Holding user message to drain ${pendingBackgroundTaskCount} pending background task(s)`);
-                    messages.push({ type: 'user', message: { role: 'user', content: '.' } });
+                    messages.push({ type: 'user', message: { role: 'user', content: 'This is a drain message, just ignore it and respond with a simple `OK`' } });
                     updateThinking(true);
                 } else {
                     isDrainTurn = false;
