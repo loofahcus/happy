@@ -268,6 +268,16 @@ export async function claudeRemote(opts: {
                 // Auto-drain by pushing a synthetic continue message instead of blocking.
                 if (isTaskNotificationTurn) {
                     isTaskNotificationTurn = false;
+                    // If already in a drain cycle (a drain message is in-flight in stdin),
+                    // do NOT push another drain — that creates a double-drain race where
+                    // the first drain's result sets isDrainTurn=false (Branch 2) while
+                    // the second drain's "OK" response leaks to the user.
+                    // Just continue; the in-flight drain will produce a result that
+                    // reaches Branch 2 or 3 and handles the held user message.
+                    if (isDrainTurn) {
+                        logger.debug(`[claudeRemote] Task notification processed during existing drain cycle, skipping extra drain (pending tasks: ${pendingBackgroundTaskCount})`);
+                        continue;
+                    }
                     // If no more pending tasks and we have a held user message, skip drain and send it directly
                     if (pendingBackgroundTaskCount === 0 && pendingUserMessage) {
                         const held = pendingUserMessage;
