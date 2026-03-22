@@ -15,7 +15,14 @@ import { useSetting } from "@/sync/storage";
 function formatMessageTime(createdAt: number): string {
     try {
         const date = new Date(createdAt);
-        return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+        const today = new Date();
+        const isToday = date.getDate() === today.getDate() && date.getMonth() === today.getMonth() && date.getFullYear() === today.getFullYear();
+        const timeStr = date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+        if (isToday) {
+            return timeStr;
+        }
+        const dateStr = date.toLocaleDateString([], { month: 'short', day: 'numeric' });
+        return `${dateStr} ${timeStr}`;
     } catch {
         return '';
     }
@@ -139,7 +146,14 @@ function AgentEventBlock(props: {
     const formatTime = (timestamp: number): string => {
       try {
         const date = new Date(timestamp * 1000); // Convert from Unix timestamp
-        return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+        const today = new Date();
+        const isToday = date.getDate() === today.getDate() && date.getMonth() === today.getMonth() && date.getFullYear() === today.getFullYear();
+        const timeStr = date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+        if (isToday) {
+            return timeStr;
+        }
+        const dateStr = date.toLocaleDateString([], { month: 'short', day: 'numeric' });
+        return `${dateStr} ${timeStr}`;
       } catch {
         return t('message.unknownTime');
       }
