@@ -28,6 +28,7 @@ import { log } from '@/log';
 import { gitStatusSync } from './gitStatusSync';
 import { projectManager } from './projectManager';
 import { AsyncLock } from '@/utils/lock';
+import { loadMessageCache, appendMessageCache, deleteMessageCache, cleanExpiredMessageCaches } from './messageCache';
 import { voiceHooks } from '@/realtime/hooks/voiceHooks';
 import { Message } from './typesMessage';
 import { EncryptionCache } from './encryption/encryptionCache';
@@ -184,6 +185,8 @@ class Sync {
 
     async #init() {
 
+        // Clean up expired message caches (fire-and-forget)
+        cleanExpiredMessageCaches();
         // Subscribe to updates
         this.subscribeToUpdates();
 
@@ -1601,7 +1604,19 @@ class Sync {
     }
 
     private fetchMessages = async (sessionId: string) => {
-        log.log(`💬 fetchMessages starting for session ${sessionId} - acquiring lock`);
+        log.log(`💬 fetchMessages starting for session ${sessionId}`);
+
+        // ── Load cache before lock so queue can drain immediately ─────
+        const preSeq = this.sessionLastSeq.get(sessionId) ?? 0;
+        if (preSeq === 0) {
+            const cached = loadMessageCache(sessionId);
+            if (cached) {
+                log.log(`💬 fetchMessages: loaded ${cached.messages.length} cached messages for ${sessionId}`);
+                this.enqueueMessages(sessionId, cached.messages);
+                this.sessionLastSeq.set(sessionId, cached.lastSeq);
+            }
+        }
+
         const lock = this.getSessionMessageLock(sessionId);
         await lock.inLock(async () => {
             const encryption = this.encryption.getSessionEncryption(sessionId);
@@ -1611,6 +1626,7 @@ class Sync {
             }
 
             let afterSeq = this.sessionLastSeq.get(sessionId) ?? 0;
+            const allNewNormalized: NormalizedMessage[] = [];
             let hasMore = true;
             let totalNormalized = 0;
 
@@ -1645,6 +1661,7 @@ class Sync {
                 if (normalizedMessages.length > 0) {
                     totalNormalized += normalizedMessages.length;
                     this.enqueueMessages(sessionId, normalizedMessages);
+                    allNewNormalized.push(...normalizedMessages);
                 }
 
                 this.sessionLastSeq.set(sessionId, maxSeq);
@@ -1654,6 +1671,11 @@ class Sync {
                     break;
                 }
                 afterSeq = maxSeq;
+            }
+
+            // ── Write cache ─────────────────────────────────────────────
+            if (allNewNormalized.length > 0) {
+                appendMessageCache(sessionId, allNewNormalized, afterSeq);
             }
 
             storage.getState().applyMessagesLoaded(sessionId);
@@ -1856,6 +1878,9 @@ class Sync {
             this.sessionMessageLocks.delete(sessionId);
             this.sessionMessageQueue.delete(sessionId);
             this.sessionQueueProcessing.delete(sessionId);
+
+            // Clear message cache
+            deleteMessageCache(sessionId);
 
             log.log(`🗑️ Session ${sessionId} deleted from local storage`);
         } else if (updateData.body.t === 'update-session') {
