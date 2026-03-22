@@ -358,9 +358,9 @@ export function reducer(state: ReducerState, messages: NormalizedMessage[], agen
                 // Check if we already have a message for this permission ID
                 const existingMessageId = state.toolIdToMessageId.get(permId);
                 if (existingMessageId) {
-                    // Update existing tool message with permission info
+                    // Update existing tool message with permission info (always update to ensure changed set inclusion)
                     const message = state.messages.get(existingMessageId);
-                    if (message?.tool && !message.tool.permission) {
+                    if (message?.tool) {
                         if (ENABLE_LOGGING) {
                             console.log(`[REDUCER] Updating existing tool ${permId} with permission`);
                         }
