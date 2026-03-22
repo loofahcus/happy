@@ -12,6 +12,15 @@ import { sync } from '@/sync/sync';
 import { Option } from './markdown/MarkdownView';
 import { useSetting } from "@/sync/storage";
 
+function formatMessageTime(createdAt: number): string {
+    try {
+        const date = new Date(createdAt);
+        return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    } catch {
+        return '';
+    }
+}
+
 export const MessageView = (props: {
   message: Message;
   metadata: Metadata | null;
@@ -81,6 +90,7 @@ function UserTextBlock(props: {
           <Text style={styles.debugText}>{JSON.stringify(props.message.meta)}</Text>
         )} */}
       </View>
+      <Text style={styles.userTimestamp}>{formatMessageTime(props.message.createdAt)}</Text>
     </View>
   );
 }
@@ -102,6 +112,7 @@ function AgentTextBlock(props: {
   return (
     <View style={[styles.agentMessageContainer, props.message.isThinking && { opacity: 0.3 }]}>
       <MarkdownView markdown={props.message.text} onOptionPress={handleOptionPress} />
+      {!props.message.isThinking && <Text style={styles.agentTimestamp}>{formatMessageTime(props.message.createdAt)}</Text>}
     </View>
   );
 }
@@ -218,5 +229,19 @@ const styles = StyleSheet.create((theme) => ({
   debugText: {
     color: theme.colors.agentEventText,
     fontSize: 12,
+  },
+  userTimestamp: {
+    color: theme.colors.agentEventText,
+    fontSize: 11,
+    marginTop: -8,
+    marginBottom: 12,
+    marginRight: 4,
+    textAlign: 'right',
+  },
+  agentTimestamp: {
+    color: theme.colors.agentEventText,
+    fontSize: 11,
+    marginTop: 2,
+    marginLeft: 2,
   },
 }));
