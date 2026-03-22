@@ -35,7 +35,6 @@ type MessageCache = MessageCacheMeta & {
 - `msg-cache-index` — `string[]` of all cached session IDs (avoids iterating full MMKV keyspace)
 
 **Constraints:**
-- **Max 1000 messages per session cache.** When exceeding the limit, truncate from the front (oldest messages dropped). The `lastSeq` remains correct since it tracks the highest seq.
 - **Expiry**: 30 days from last `cachedAt`. Active sessions auto-renew on each write.
 
 ## Flow
@@ -77,7 +76,6 @@ Core interface:
 
 ```typescript
 const CACHE_VERSION = 1;
-const MAX_CACHED_MESSAGES = 1000;
 const CACHE_EXPIRY_MS = 30 * 24 * 60 * 60 * 1000; // 30 days
 
 // Load cache metadata only (cheap)
@@ -86,7 +84,7 @@ function loadMessageCacheMeta(sessionId: string): MessageCacheMeta | null
 // Load full cached messages for a session
 function loadMessageCache(sessionId: string): MessageCache | null
 
-// Append new messages and update lastSeq (truncates to MAX_CACHED_MESSAGES)
+// Append new messages and update lastSeq
 function appendMessageCache(
   sessionId: string,
   messages: NormalizedMessage[],
@@ -131,4 +129,4 @@ function cleanExpiredMessageCaches(): void
 3. **Session deleted**: `deleteMessageCache(sessionId)` called in the delete-session handler.
 4. **Reducer logic changes**: Since we cache NormalizedMessages (not final Messages), updated reducer logic automatically applies on replay. No migration needed.
 5. **Reconnection after background**: Restore `afterSeq` from cache meta if `sessionLastSeq` is 0 but cache exists.
-6. **Large sessions**: Capped at 1000 messages. Oldest messages truncated. Server re-sends them only if `after_seq` is set below the truncation point — but since `lastSeq` always reflects the true highest seq, this does not happen in practice.
+6. **Large sessions**: No cap on cached messages. MMKV handles large values well via memory-mapped files, and sessions with thousands of messages are uncommon.
