@@ -174,18 +174,18 @@ export async function claudeRemote(opts: {
     let pendingUserMessage: { message: string, mode: EnhancedMode } | null = null;
     let isDrainTurn = false; // When true, suppress onMessage to hide drain turns from webapp
 
-    // Push initial message (skip for resume with empty message - just load context)
+    // Push initial message - always push something so stream-json stdin is unblocked
+    // For resume without prompt, send a drain message and suppress it from webapp via isDrainTurn
     let messages = new PushableAsyncIterable<SDKUserMessage>();
     const isResumeWithoutPrompt = !!startFrom && !initial.message.trim();
-    if (!isResumeWithoutPrompt) {
-        messages.push({
-            type: 'user',
-            message: {
-                role: 'user',
-                content: initial.message,
-            },
-        });
-    }
+    if (isResumeWithoutPrompt) isDrainTurn = true;
+    messages.push({
+        type: 'user',
+        message: {
+            role: 'user',
+            content: isResumeWithoutPrompt ? "This's a drain message, just ignore it and respond with a simple `OK`." : initial.message,
+        },
+    });
 
     // Start the loop
     const response = query({
