@@ -173,13 +173,14 @@ export async function claudeRemote(opts: {
     let pendingBackgroundTaskCount = 0;
     let isTaskNotificationTurn = false;
     let pendingUserMessage: { message: string, mode: EnhancedMode } | null = null;
-    let isDrainTurn = false; // When true, suppress onMessage to hide drain turns from webapp
+    let isDrainTurn = false; // When true, we are in a drain cycle (prevents double-drain)
+    let suppressDrainMessages = false; // When true, suppress onMessage to hide drain turns from webapp
 
     // Push initial message - always push something so stream-json stdin is unblocked
     // For resume without prompt, send a drain message and suppress it from webapp via isDrainTurn
     let messages = new PushableAsyncIterable<SDKUserMessage>();
     const isResumeWithoutPrompt = !!startFrom && !initial.message.trim();
-    if (isResumeWithoutPrompt) isDrainTurn = true;
+    if (isResumeWithoutPrompt) { isDrainTurn = true; suppressDrainMessages = true; }
     // Send historical messages to client before starting the drain turn
     if (isResumeWithoutPrompt && startFrom && opts.onResumeHistory) {
         await opts.onResumeHistory(startFrom);
@@ -236,7 +237,7 @@ export async function claudeRemote(opts: {
             }
 
             // Handle messages - suppress during drain turns
-            if (!isDrainTurn) { opts.onMessage(message); }
+            if (!suppressDrainMessages) { opts.onMessage(message); }
 
             // Handle special system messages
             if (message.type === 'system' && message.subtype === 'init') {
@@ -273,6 +274,21 @@ export async function claudeRemote(opts: {
                 // Auto-drain by pushing a synthetic continue message instead of blocking.
                 if (isTaskNotificationTurn) {
                     isTaskNotificationTurn = false;
+                    // If no more pending tasks and we have a held user message, send it directly.
+                    // IMPORTANT: This check must come BEFORE the isDrainTurn skip to avoid deadlock
+                    // when a task notification arrives during an existing drain cycle (Branch 3 drain).
+                    // Without this ordering, both sides would wait for each other indefinitely.
+                    if (pendingBackgroundTaskCount === 0 && pendingUserMessage) {
+                        const held = pendingUserMessage;
+                        pendingUserMessage = null;
+                        isDrainTurn = false;
+                        suppressDrainMessages = false;
+                        mode = held.mode;
+                        logger.debug(`[claudeRemote] Last task notification processed, sending held user message directly`);
+                        messages.push({ type: 'user', message: { role: 'user', content: held.message } });
+                        updateThinking(true);
+                        continue;
+                    }
                     // If already in a drain cycle (a drain message is in-flight in stdin),
                     // do NOT push another drain — that creates a double-drain race where
                     // the first drain's result sets isDrainTurn=false (Branch 2) while
@@ -283,18 +299,8 @@ export async function claudeRemote(opts: {
                         logger.debug(`[claudeRemote] Task notification processed during existing drain cycle, skipping extra drain (pending tasks: ${pendingBackgroundTaskCount})`);
                         continue;
                     }
-                    // If no more pending tasks and we have a held user message, skip drain and send it directly
-                    if (pendingBackgroundTaskCount === 0 && pendingUserMessage) {
-                        const held = pendingUserMessage;
-                        pendingUserMessage = null;
-                        isDrainTurn = false;
-                        mode = held.mode;
-                        logger.debug(`[claudeRemote] Last task notification processed, sending held user message directly`);
-                        messages.push({ type: 'user', message: { role: 'user', content: held.message } });
-                        updateThinking(true);
-                        continue;
-                    }
                     isDrainTurn = true;
+                    suppressDrainMessages = true;
                     logger.debug(`[claudeRemote] Task notification turn result - auto-draining (pending tasks: ${pendingBackgroundTaskCount}, has pending user msg: ${!!pendingUserMessage})`);
                     messages.push({ type: 'user', message: { role: 'user', content: 'This is a drain message, just ignore it and respond with a simple `OK`' } });
                     updateThinking(true);
@@ -306,6 +312,7 @@ export async function claudeRemote(opts: {
                     const held = pendingUserMessage;
                     pendingUserMessage = null;
                     isDrainTurn = false;
+                    suppressDrainMessages = false;
                     mode = held.mode;
                     logger.debug('[claudeRemote] All task notifications drained, sending held user message');
                     messages.push({ type: 'user', message: { role: 'user', content: held.message } });
@@ -328,10 +335,12 @@ export async function claudeRemote(opts: {
                     pendingUserMessage = next;
                     isDrainTurn = true;
                     logger.debug(`[claudeRemote] Holding user message to drain ${pendingBackgroundTaskCount} pending background task(s)`);
+                    suppressDrainMessages = false; // Forward task completion messages to client
                     messages.push({ type: 'user', message: { role: 'user', content: 'This is a drain message, just ignore it and respond with a simple `OK`' } });
                     updateThinking(true);
                 } else {
                     isDrainTurn = false;
+                    suppressDrainMessages = false;
                     messages.push({ type: 'user', message: { role: 'user', content: next.message } });
                 }
             }
