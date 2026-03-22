@@ -41,6 +41,7 @@ export async function claudeRemote(opts: {
     onThinkingChange?: (thinking: boolean) => void,
     onMessage: (message: SDKMessage) => void,
     onCompletionEvent?: (message: string) => void,
+    onResumeHistory?: (resumeSessionId: string) => Promise<void>,
     onSessionReset?: () => void
 }) {
 
@@ -179,6 +180,10 @@ export async function claudeRemote(opts: {
     let messages = new PushableAsyncIterable<SDKUserMessage>();
     const isResumeWithoutPrompt = !!startFrom && !initial.message.trim();
     if (isResumeWithoutPrompt) isDrainTurn = true;
+    // Send historical messages to client before starting the drain turn
+    if (isResumeWithoutPrompt && startFrom && opts.onResumeHistory) {
+        await opts.onResumeHistory(startFrom);
+    }
     messages.push({
         type: 'user',
         message: {

@@ -16,6 +16,8 @@ import { EnhancedMode } from "./loop";
 import { RawJSONLines } from "@/claude/types";
 import { OutgoingMessageQueue } from "./utils/OutgoingMessageQueue";
 import { getToolName } from "./utils/getToolName";
+import { readSessionLog } from "./utils/sessionScanner";
+import { getProjectPath } from "./utils/path";
 
 interface PermissionsField {
     date: number;
@@ -439,6 +441,17 @@ export async function claudeRemoteLauncher(session: Session): Promise<'switch' |
                     claudeEnvVars: session.claudeEnvVars,
                     claudeArgs: session.claudeArgs,
                     onMessage,
+                    onResumeHistory: async (resumeSessionId: string) => {
+                        const projectDir = getProjectPath(session.path);
+                        const historyMessages = await readSessionLog(projectDir, resumeSessionId);
+                        logger.debug(`[remote]: Sending ${historyMessages.length} historical messages for resumed session ${resumeSessionId}`);
+                        for (const msg of historyMessages) {
+                            session.client.sendClaudeSessionMessage(msg);
+                        }
+                        if (historyMessages.length > 0) {
+                            session.client.closeClaudeSessionTurn('completed');
+                        }
+                    },
                     onCompletionEvent: (message: string) => {
                         logger.debug(`[remote]: Completion event: ${message}`);
                         session.client.sendSessionEvent({ type: 'message', message });
