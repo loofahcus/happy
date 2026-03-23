@@ -323,11 +323,26 @@ export const storage = create<StorageState>()((set, get) => {
                     (session.permissionMode && session.permissionMode !== 'default' ? session.permissionMode : undefined) ||
                     defaultPermissionMode;
 
+
+                // Protect against out-of-order async updates overwriting newer agentState/metadata
+                const oldAgentStateVersion = state.sessions[session.id]?.agentStateVersion || 0;
+                const oldMetadataVersion = state.sessions[session.id]?.metadataVersion || 0;
+                const preserveAgentState = (session.agentStateVersion || 0) < oldAgentStateVersion;
+                const preserveMetadata = (session.metadataVersion || 0) < oldMetadataVersion;
                 mergedSessions[session.id] = {
                     ...session,
                     presence,
                     draft: existingDraft || savedDraft || session.draft || null,
-                    permissionMode: resolvedPermissionMode
+                    permissionMode: resolvedPermissionMode,
+                    // Never regress agentState/metadata to an older version (out-of-order async decryption)
+                    ...(preserveAgentState && state.sessions[session.id] ? {
+                        agentState: state.sessions[session.id].agentState,
+                        agentStateVersion: state.sessions[session.id].agentStateVersion
+                    } : {}),
+                    ...(preserveMetadata && state.sessions[session.id] ? {
+                        metadata: state.sessions[session.id].metadata,
+                        metadataVersion: state.sessions[session.id].metadataVersion
+                    } : {})
                 };
             });
 
