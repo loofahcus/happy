@@ -172,7 +172,6 @@ export async function claudeRemote(opts: {
     // 4. Only then sends the real user message for a proper response
     let pendingBackgroundTaskCount = 0;
     let isTaskNotificationTurn = false;
-    let pendingUserMessage: { message: string, mode: EnhancedMode } | null = null;
     let isDrainTurn = false; // When true, we are in a drain cycle (prevents double-drain)
     let suppressDrainMessages = false; // When true, suppress onMessage to hide drain turns from webapp
 
@@ -274,53 +273,22 @@ export async function claudeRemote(opts: {
                 // Auto-drain by pushing a synthetic continue message instead of blocking.
                 if (isTaskNotificationTurn) {
                     isTaskNotificationTurn = false;
-                    // If no more pending tasks and we have a held user message, send it directly.
-                    // IMPORTANT: This check must come BEFORE the isDrainTurn skip to avoid deadlock
-                    // when a task notification arrives during an existing drain cycle (Branch 3 drain).
-                    // Without this ordering, both sides would wait for each other indefinitely.
-                    if (pendingBackgroundTaskCount === 0 && pendingUserMessage) {
-                        const held = pendingUserMessage;
-                        pendingUserMessage = null;
-                        isDrainTurn = false;
-                        suppressDrainMessages = false;
-                        mode = held.mode;
-                        logger.debug(`[claudeRemote] Last task notification processed, sending held user message directly`);
-                        messages.push({ type: 'user', message: { role: 'user', content: held.message } });
-                        updateThinking(true);
-                        continue;
-                    }
                     // If already in a drain cycle (a drain message is in-flight in stdin),
                     // do NOT push another drain — that creates a double-drain race where
-                    // the first drain's result sets isDrainTurn=false (Branch 2) while
                     // the second drain's "OK" response leaks to the user.
-                    // Just continue; the in-flight drain will produce a result that
-                    // reaches Branch 2 or 3 and handles the held user message.
+                    // Just continue; the in-flight drain will handle it.
                     if (isDrainTurn) {
                         logger.debug(`[claudeRemote] Task notification processed during existing drain cycle, skipping extra drain (pending tasks: ${pendingBackgroundTaskCount})`);
                         continue;
                     }
                     isDrainTurn = true;
                     suppressDrainMessages = true;
-                    logger.debug(`[claudeRemote] Task notification turn result - auto-draining (pending tasks: ${pendingBackgroundTaskCount}, has pending user msg: ${!!pendingUserMessage})`);
+                    logger.debug(`[claudeRemote] Task notification turn result - auto-draining (pending tasks: ${pendingBackgroundTaskCount})`);
                     messages.push({ type: 'user', message: { role: 'user', content: 'This is a drain message, just ignore it and respond with a simple `OK`' } });
                     updateThinking(true);
                     continue;
                 }
-
-                // Branch 2: All notifications drained, now send the held user message.
-                if (pendingUserMessage) {
-                    const held = pendingUserMessage;
-                    pendingUserMessage = null;
-                    isDrainTurn = false;
-                    suppressDrainMessages = false;
-                    mode = held.mode;
-                    logger.debug('[claudeRemote] All task notifications drained, sending held user message');
-                    messages.push({ type: 'user', message: { role: 'user', content: held.message } });
-                    updateThinking(true);
-                    continue;
-                }
-
-                // Branch 3: Normal result - wait for user input.
+                // Branch 2: Normal result - wait for user input.
                 logger.debug('[claudeRemote] Result received, waiting for next message');
                 opts.onReady();
                 const next = await opts.nextMessage();
@@ -330,19 +298,13 @@ export async function claudeRemote(opts: {
                 }
                 mode = next.mode;
 
-                // If there are pending background tasks, hold the user message and drain first.
-                if (pendingBackgroundTaskCount > 0) {
-                    pendingUserMessage = next;
-                    isDrainTurn = true;
-                    logger.debug(`[claudeRemote] Holding user message to drain ${pendingBackgroundTaskCount} pending background task(s)`);
-                    suppressDrainMessages = false; // Forward task completion messages to client
-                    messages.push({ type: 'user', message: { role: 'user', content: 'This is a drain message, just ignore it and respond with a simple `OK`' } });
-                    updateThinking(true);
-                } else {
-                    isDrainTurn = false;
-                    suppressDrainMessages = false;
-                    messages.push({ type: 'user', message: { role: 'user', content: next.message } });
-                }
+                // Send user message immediately, regardless of pending background tasks.
+                // If there are pending task notifications, Claude will see them in this turn.
+                // Remaining notifications will be auto-drained after Claude responds (Branch 1).
+                isDrainTurn = false;
+                suppressDrainMessages = false;
+                logger.debug(`[claudeRemote] Sending user message immediately (pending background tasks: ${pendingBackgroundTaskCount})`);
+                messages.push({ type: 'user', message: { role: 'user', content: next.message } });
             }
 
             // Handle tool result
