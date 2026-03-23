@@ -426,7 +426,7 @@ export const storage = create<StorageState>()((set, get) => {
                     processedMessages.forEach(message => {
                         // Create new object references so React.memo detects changes
                         // (reducer mutates messages in-place, same reference blocks re-render)
-                        message = "tool" in message && message.tool ? { ...message, tool: { ...message.tool } } : { ...message };
+                        message = "tool" in message && message.tool ? { ...message, tool: { ...message.tool, permission: message.tool.permission ? { ...message.tool.permission } : undefined } } : { ...message };
                         mergedMessagesMap[message.id] = message;
                     });
 
@@ -518,7 +518,7 @@ export const storage = create<StorageState>()((set, get) => {
                 processedMessages.forEach(message => {
                     // Create new object references so React.memo detects changes
                     // (reducer mutates messages in-place, same reference blocks re-render)
-                    message = "tool" in message && message.tool ? { ...message, tool: { ...message.tool } } : { ...message };
+                    message = "tool" in message && message.tool ? { ...message, tool: { ...message.tool, permission: message.tool.permission ? { ...message.tool.permission } : undefined } } : { ...message };
                     mergedMessagesMap[message.id] = message;
                 });
 
@@ -588,7 +588,7 @@ export const storage = create<StorageState>()((set, get) => {
                     processedMessages.forEach(message => {
                         // Create new object references so React.memo detects changes
                         // (reducer mutates messages in-place, same reference blocks re-render)
-                        message = "tool" in message && message.tool ? { ...message, tool: { ...message.tool } } : { ...message };
+                        message = "tool" in message && message.tool ? { ...message, tool: { ...message.tool, permission: message.tool.permission ? { ...message.tool.permission } : undefined } } : { ...message };
                         messagesMap[message.id] = message;
                     });
 

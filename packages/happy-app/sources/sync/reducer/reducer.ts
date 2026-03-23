@@ -526,11 +526,6 @@ export function reducer(state: ReducerState, messages: NormalizedMessage[], agen
                         continue;
                     }
 
-                    // Skip if already processed as pending
-                    if (agentState.requests && agentState.requests[permId]) {
-                        continue;
-                    }
-
                     // Create a new message for completed permission without tool
                     let mid = allocateId();
                     let toolCall: ToolCall = {
