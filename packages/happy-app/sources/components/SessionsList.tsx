@@ -26,7 +26,7 @@ import { useRouter } from 'expo-router';
 import { Item } from './Item';
 import { ItemGroup } from './ItemGroup';
 import { useHappyAction } from '@/hooks/useHappyAction';
-import { sessionDelete, machineResumeSession } from '@/sync/ops';
+import { sessionDelete, machineResumeSession, sessionUpdateMetadata } from '@/sync/ops';
 import { HappyError } from '@/utils/errors';
 import { Modal } from '@/modal';
 import { useMachine } from '@/sync/storage';
@@ -398,6 +398,28 @@ const SessionItem = React.memo(({ session, selected, isFirst, isLast, isSingle }
         );
     }, [performDelete]);
 
+
+    const handleRename = React.useCallback(async () => {
+        if (!session.metadata) return;
+        const result = await Modal.prompt(
+            t("sessionInfo.renameSession"),
+            t("sessionInfo.renameSessionPrompt"),
+            {
+                defaultValue: sessionName,
+                placeholder: t("sessionInfo.renameSessionPlaceholder"),
+            }
+        );
+        if (result !== null && result.trim().length > 0) {
+            await sessionUpdateMetadata(
+                session.id,
+                (current) => ({
+                    ...current,
+                    summary: { text: result.trim(), updatedAt: Date.now() },
+                }),
+                session.metadataVersion
+            );
+        }
+    }, [session, sessionName]);
     const avatarId = React.useMemo(() => {
         return getSessionAvatarId(session);
     }, [session]);
@@ -421,6 +443,7 @@ const SessionItem = React.memo(({ session, selected, isFirst, isLast, isSingle }
                     navigateToSession(session.id);
                 }
             }}
+            onLongPress={handleRename}
         >
             <View style={styles.avatarContainer}>
                 <Avatar id={avatarId} size={48} monochrome={!sessionStatus.isConnected} flavor={session.metadata?.flavor} />
