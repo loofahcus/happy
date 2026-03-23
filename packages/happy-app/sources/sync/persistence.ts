@@ -1,3 +1,4 @@
+import { evictOldestMessageCache } from './messageCache';
 import { MMKV } from 'react-native-mmkv';
 import { Settings, settingsDefaults, settingsParse, SettingsSchema } from './settings';
 import { LocalSettings, localSettingsDefaults, localSettingsParse } from './localSettings';
@@ -6,6 +7,20 @@ import { Profile, profileDefaults, profileParse } from './profile';
 import type { PermissionModeKey } from '@/components/PermissionModeSelector';
 
 const mmkv = new MMKV();
+
+function safeSet(key: string, value: string): void {
+    while (true) {
+        try {
+            mmkv.set(key, value);
+            return;
+        } catch {
+            if (!evictOldestMessageCache()) {
+                console.warn('[persistence] Storage quota exceeded, no caches left to evict');
+                return;
+            }
+        }
+    }
+}
 const NEW_SESSION_DRAFT_KEY = 'new-session-draft-v1';
 
 export type NewSessionAgentType = 'claude' | 'codex' | 'gemini';
@@ -36,7 +51,7 @@ export function loadSettings(): { settings: Settings, version: number | null } {
 }
 
 export function saveSettings(settings: Settings, version: number) {
-    mmkv.set('settings', JSON.stringify({ settings, version }));
+    safeSet('settings', JSON.stringify({ settings, version }));
 }
 
 export function loadPendingSettings(): Partial<Settings> {
@@ -54,7 +69,7 @@ export function loadPendingSettings(): Partial<Settings> {
 }
 
 export function savePendingSettings(settings: Partial<Settings>) {
-    mmkv.set('pending-settings', JSON.stringify(settings));
+    safeSet('pending-settings', JSON.stringify(settings));
 }
 
 export function loadLocalSettings(): LocalSettings {
@@ -72,7 +87,7 @@ export function loadLocalSettings(): LocalSettings {
 }
 
 export function saveLocalSettings(settings: LocalSettings) {
-    mmkv.set('local-settings', JSON.stringify(settings));
+    safeSet('local-settings', JSON.stringify(settings));
 }
 
 export function loadThemePreference(): 'light' | 'dark' | 'adaptive' {
@@ -105,7 +120,7 @@ export function loadPurchases(): Purchases {
 }
 
 export function savePurchases(purchases: Purchases) {
-    mmkv.set('purchases', JSON.stringify(purchases));
+    safeSet('purchases', JSON.stringify(purchases));
 }
 
 export function loadSessionDrafts(): Record<string, string> {
@@ -122,7 +137,7 @@ export function loadSessionDrafts(): Record<string, string> {
 }
 
 export function saveSessionDrafts(drafts: Record<string, string>) {
-    mmkv.set('session-drafts', JSON.stringify(drafts));
+    safeSet('session-drafts', JSON.stringify(drafts));
 }
 
 export function loadNewSessionDraft(): NewSessionDraft | null {
@@ -164,7 +179,7 @@ export function loadNewSessionDraft(): NewSessionDraft | null {
 }
 
 export function saveNewSessionDraft(draft: NewSessionDraft) {
-    mmkv.set(NEW_SESSION_DRAFT_KEY, JSON.stringify(draft));
+    safeSet(NEW_SESSION_DRAFT_KEY, JSON.stringify(draft));
 }
 
 export function clearNewSessionDraft() {
@@ -185,7 +200,7 @@ export function loadSessionPermissionModes(): Record<string, string> {
 }
 
 export function saveSessionPermissionModes(modes: Record<string, string>) {
-    mmkv.set('session-permission-modes', JSON.stringify(modes));
+    safeSet('session-permission-modes', JSON.stringify(modes));
 }
 
 export function loadProfile(): Profile {
@@ -203,13 +218,13 @@ export function loadProfile(): Profile {
 }
 
 export function saveProfile(profile: Profile) {
-    mmkv.set('profile', JSON.stringify(profile));
+    safeSet('profile', JSON.stringify(profile));
 }
 
 // Simple temporary text storage for passing large strings between screens
 export function storeTempText(content: string): string {
     const id = `temp_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
-    mmkv.set(`temp_text_${id}`, content);
+    safeSet(`temp_text_${id}`, content);
     return id;
 }
 
