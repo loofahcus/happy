@@ -240,6 +240,9 @@ export const ja: TranslationStructure = {
         enhancedSessionWizard: '拡張セッションウィザード',
         enhancedSessionWizardEnabled: 'プロファイル優先セッションランチャーが有効',
         enhancedSessionWizardDisabled: '標準セッションランチャーを使用',
+        gitTracking: 'Git トラッキング',
+        gitTrackingEnabled: '新しいセッションでバックグラウンドGitトラッキングが有効',
+        gitTrackingDisabled: '新しいセッションでバックグラウンドGitトラッキングが無効',
     },
 
     errors: {

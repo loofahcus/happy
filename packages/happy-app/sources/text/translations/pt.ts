@@ -208,6 +208,9 @@ export const pt: TranslationStructure = {
         enhancedSessionWizard: 'Assistente de sessão aprimorado',
         enhancedSessionWizardEnabled: 'Lançador de sessão com perfil ativo',
         enhancedSessionWizardDisabled: 'Usando o lançador de sessão padrão',
+        gitTracking: 'Rastreamento Git',
+        gitTrackingEnabled: 'Rastreamento Git em segundo plano habilitado para novas sessões',
+        gitTrackingDisabled: 'Rastreamento Git em segundo plano desabilitado para novas sessões',
     },
 
     errors: {

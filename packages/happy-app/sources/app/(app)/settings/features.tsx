@@ -14,6 +14,7 @@ export default function FeaturesSettingsScreen() {
     const [markdownCopyV2, setMarkdownCopyV2] = useLocalSettingMutable('markdownCopyV2');
     const [hideInactiveSessions, setHideInactiveSessions] = useSettingMutable('hideInactiveSessions');
     const [useEnhancedSessionWizard, setUseEnhancedSessionWizard] = useSettingMutable('useEnhancedSessionWizard');
+    const [enableGitTracking, setEnableGitTracking] = useSettingMutable('enableGitTracking');
 
     return (
         <ItemList style={{ paddingTop: 0 }}>
@@ -68,6 +69,18 @@ export default function FeaturesSettingsScreen() {
                         <Switch
                             value={useEnhancedSessionWizard}
                             onValueChange={setUseEnhancedSessionWizard}
+                        />
+                    }
+                    showChevron={false}
+                />
+                <Item
+                    title={t('settingsFeatures.gitTracking')}
+                    subtitle={enableGitTracking ? t('settingsFeatures.gitTrackingEnabled') : t('settingsFeatures.gitTrackingDisabled')}
+                    icon={<Ionicons name="git-branch-outline" size={29} color="#FF3B30" />}
+                    rightElement={
+                        <Switch
+                            value={enableGitTracking}
+                            onValueChange={setEnableGitTracking}
                         />
                     }
                     showChevron={false}

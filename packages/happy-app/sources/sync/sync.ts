@@ -62,6 +62,14 @@ type OutboxMessage = {
     content: string;
 };
 
+/** Check if git tracking is enabled for a session (per-session override, falls back to global setting) */
+function isGitTrackingEnabled(sessionId: string): boolean {
+    const state = storage.getState();
+    const session = state.sessions[sessionId];
+    if (session?.enableGitTracking != null) return session.enableGitTracking;
+    return state.settings.enableGitTracking;
+}
+
 class Sync {
     private static readonly BACKGROUND_SEND_TIMEOUT_MS = 30_000;
     encryption!: Encryption;
@@ -242,7 +250,7 @@ class Sync {
         this.getMessagesSync(sessionId).invalidate();
 
         // Also invalidate git status sync for this session (only if enabled)
-        if (storage.getState().settings.enableGitTracking) {
+        if (isGitTrackingEnabled(sessionId)) {
             gitStatusSync.getSync(sessionId).invalidate();
         }
 
@@ -1744,7 +1752,7 @@ class Sync {
                     if (typeof item !== 'string') {
                         this.getMessagesSync(item.id).invalidate();
                         // Also invalidate git status on reconnection (only if enabled)
-                        if (storage.getState().settings.enableGitTracking) {
+                        if (isGitTrackingEnabled(item.id)) {
                             gitStatusSync.invalidate(item.id);
                         }
                     }
@@ -1845,7 +1853,7 @@ class Sync {
                         if (lastMessage.role === 'agent' && lastMessage.content[0] && lastMessage.content[0].type === 'tool-result') {
                             hasMutableTool = storage.getState().isMutableToolCall(updateData.body.sid, lastMessage.content[0].tool_use_id);
                         }
-                        if (hasMutableTool && storage.getState().settings.enableGitTracking) {
+                        if (hasMutableTool && isGitTrackingEnabled(updateData.body.sid)) {
                             gitStatusSync.invalidate(updateData.body.sid);
                         }
                     } else {
@@ -1933,7 +1941,7 @@ class Sync {
                     }]);
 
                     // Invalidate git status when agent state changes (files may have been modified)
-                    if (updateData.body.agentState && storage.getState().settings.enableGitTracking) {
+                    if (updateData.body.agentState && isGitTrackingEnabled(sessionId)) {
                         gitStatusSync.invalidate(sessionId);
 
                         // Check for new permission requests and notify voice assistant

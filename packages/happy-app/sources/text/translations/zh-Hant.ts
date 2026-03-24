@@ -209,6 +209,9 @@ export const zhHant: TranslationStructure = {
         enhancedSessionWizard: '增強工作階段精靈',
         enhancedSessionWizardEnabled: '設定檔優先的工作階段啟動器已啟用',
         enhancedSessionWizardDisabled: '使用標準工作階段啟動器',
+        gitTracking: 'Git 追蹤',
+        gitTrackingEnabled: '新工作階段預設啟用背景 Git 追蹤',
+        gitTrackingDisabled: '新工作階段預設停用背景 Git 追蹤',
     },
 
     errors: {

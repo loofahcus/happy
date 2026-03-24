@@ -219,6 +219,9 @@ export const pl: TranslationStructure = {
         enhancedSessionWizard: 'Ulepszony kreator sesji',
         enhancedSessionWizardEnabled: 'Aktywny launcher z profilem',
         enhancedSessionWizardDisabled: 'Używanie standardowego launchera sesji',
+        gitTracking: 'Śledzenie Git',
+        gitTrackingEnabled: 'Śledzenie Git w tle włączone dla nowych sesji',
+        gitTrackingDisabled: 'Śledzenie Git w tle wyłączone dla nowych sesji',
     },
 
     errors: {

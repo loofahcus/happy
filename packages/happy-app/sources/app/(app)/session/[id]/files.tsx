@@ -11,7 +11,7 @@ import { ItemList } from '@/components/ItemList';
 import { Typography } from '@/constants/Typography';
 import { getGitStatusFiles, GitFileStatus, GitStatusFiles } from '@/sync/gitStatusFiles';
 import { searchFiles, FileItem } from '@/sync/suggestionFile';
-import { useSessionGitStatus, useSessionProjectGitStatus, useSettingMutable } from '@/sync/storage';
+import { useSessionGitStatus, useSessionProjectGitStatus, useSessionGitTrackingEnabled, storage } from '@/sync/storage';
 import { useUnistyles, StyleSheet } from 'react-native-unistyles';
 import { layout } from '@/components/layout';
 import { FileIcon } from '@/components/FileIcon';
@@ -33,7 +33,7 @@ export default function FilesScreen() {
     const sessionGitStatus = useSessionGitStatus(sessionId);
     const gitStatus = projectGitStatus || sessionGitStatus;
     const { theme } = useUnistyles();
-    const [enableGitTracking, setEnableGitTracking] = useSettingMutable('enableGitTracking');
+    const enableGitTracking = useSessionGitTrackingEnabled(sessionId);
     
     // Load git status files
     const loadGitStatusFiles = React.useCallback(async () => {
@@ -254,7 +254,7 @@ export default function FilesScreen() {
                 <Switch
                     value={enableGitTracking}
                     onValueChange={(value) => {
-                        setEnableGitTracking(value);
+                        storage.getState().updateSessionGitTracking(sessionId, value);
                         if (!value) {
                             gitStatusSync.stop(sessionId);
                         } else {

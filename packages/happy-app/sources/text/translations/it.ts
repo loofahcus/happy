@@ -237,6 +237,9 @@ export const it: TranslationStructure = {
         enhancedSessionWizard: 'Wizard sessione avanzato',
         enhancedSessionWizardEnabled: 'Avvio sessioni con profili attivo',
         enhancedSessionWizardDisabled: 'Usando avvio sessioni standard',
+        gitTracking: 'Tracciamento Git',
+        gitTrackingEnabled: 'Tracciamento Git in background abilitato per nuove sessioni',
+        gitTrackingDisabled: 'Tracciamento Git in background disabilitato per nuove sessioni',
     },
 
     errors: {

@@ -210,6 +210,9 @@ export const zhHans: TranslationStructure = {
         enhancedSessionWizard: '增强会话向导',
         enhancedSessionWizardEnabled: '配置文件优先启动器已激活',
         enhancedSessionWizardDisabled: '使用标准会话启动器',
+        gitTracking: 'Git 跟踪',
+        gitTrackingEnabled: '新会话默认启用后台 Git 跟踪',
+        gitTrackingDisabled: '新会话默认禁用后台 Git 跟踪',
     },
 
     errors: {

@@ -223,6 +223,9 @@ export const en: TranslationStructure = {
         enhancedSessionWizard: 'Enhanced Session Wizard',
         enhancedSessionWizardEnabled: 'Profile-first session launcher active',
         enhancedSessionWizardDisabled: 'Using standard session launcher',
+        gitTracking: 'Git Tracking',
+        gitTrackingEnabled: 'Background git tracking enabled for new sessions',
+        gitTrackingDisabled: 'Background git tracking disabled for new sessions',
     },
 
     errors: {

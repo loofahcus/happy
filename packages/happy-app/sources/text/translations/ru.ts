@@ -190,6 +190,9 @@ export const ru: TranslationStructure = {
         enhancedSessionWizard: 'Улучшенный мастер сессий',
         enhancedSessionWizardEnabled: 'Лаунчер с профилем активен',
         enhancedSessionWizardDisabled: 'Используется стандартный лаунчер',
+        gitTracking: 'Git-отслеживание',
+        gitTrackingEnabled: 'Фоновое отслеживание git включено для новых сессий',
+        gitTrackingDisabled: 'Фоновое отслеживание git отключено для новых сессий',
     },
 
     errors: {
