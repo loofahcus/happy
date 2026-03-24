@@ -176,6 +176,7 @@ export async function claudeRemote(opts: {
     let isTaskNotificationTurn = false;
     let isDrainTurn = false; // When true, we are in a drain cycle (prevents double-drain)
     let suppressDrainMessages = false; // When true, suppress onMessage to hide drain turns from webapp
+    let postReadyDrainStarted = false; // When true, we already started a post-ready drain cycle
 
     // Push initial message - always push something so stream-json stdin is unblocked
     // For resume without prompt, send a drain message and suppress it from webapp via isDrainTurn
@@ -291,10 +292,25 @@ export async function claudeRemote(opts: {
                     // Fall through to normal result handling (wait for user).
                     logger.debug(`[claudeRemote] Task notification in normal user turn - not draining, waiting for user (pending tasks: ${pendingBackgroundTaskCount})`);
                 }
-                // Clear drain state and wait for user input.
+                // Clear drain state.
                 isDrainTurn = false;
                 suppressDrainMessages = false;
 
+                // Flush any remaining pending task notifications before accepting user input.
+                // postReadyDrainStarted prevents re-triggering: if a drain turn produces no
+                // notification, the task is still running — stop and wait for user instead.
+                if (!postReadyDrainStarted && pendingBackgroundTaskCount > 0) {
+                    postReadyDrainStarted = true;
+                    isDrainTurn = true;
+                    suppressDrainMessages = true;
+                    logger.debug(`[claudeRemote] Post-ready drain: flushing ${pendingBackgroundTaskCount} pending task notification(s)`);
+                    messages.push({ type: 'user', message: { role: 'user', content: 'This is a drain message, just ignore it and respond with a simple `OK`' } });
+                    updateThinking(true);
+                    continue;
+                }
+
+                // Done — either no drain needed, or drain cycle just completed.
+                postReadyDrainStarted = false;
                 logger.debug('[claudeRemote] Result received, waiting for next message');
                 opts.onReady();
                 const next = await opts.nextMessage();
