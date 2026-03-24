@@ -1222,7 +1222,8 @@ function NewSessionWizard() {
                                 onSend={handleCreateSession}
                                 isSendDisabled={!canCreate}
                                 isSending={isCreating}
-                                allowEmptySend={resumeEnabled}
+                                allowEmptySend={true}
+                                editable={!resumeEnabled}
                                 placeholder="What would you like to work on?"
                                 autocompletePrefixes={[]}
                                 autocompleteSuggestions={async () => []}
@@ -2001,7 +2002,8 @@ function NewSessionWizard() {
                             onSend={handleCreateSession}
                             isSendDisabled={!canCreate}
                             isSending={isCreating}
-                            allowEmptySend={resumeEnabled}
+                            allowEmptySend={true}
+                            editable={!resumeEnabled}
                             placeholder="What would you like to work on?"
                             autocompletePrefixes={[]}
                             autocompleteSuggestions={async () => []}

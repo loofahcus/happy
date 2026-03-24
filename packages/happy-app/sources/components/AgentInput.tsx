@@ -75,6 +75,7 @@ interface AgentInputProps {
     isSending?: boolean;
     allowEmptySend?: boolean;
     minHeight?: number;
+    editable?: boolean;
     profileId?: string | null;
     onProfileClick?: () => void;
 }
@@ -1011,6 +1012,7 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
                             onKeyPress={handleKeyPress}
                             onStateChange={handleInputStateChange}
                             maxHeight={120}
+                            editable={props.editable}
                         />
                     </View>
 
