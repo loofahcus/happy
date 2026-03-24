@@ -573,6 +573,8 @@ export const pl: TranslationStructure = {
         file: 'Plik',
         fileEmpty: 'Plik jest pusty',
         noChanges: 'Brak zmian do wyświetlenia',
+        trackGitChanges: 'Śledzenie zmian Git',
+        trackGitChangesDescription: 'Monitoruj zmiany plików w tle za pomocą git',
     },
 
     settingsVoice: {

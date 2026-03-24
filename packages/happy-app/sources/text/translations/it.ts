@@ -592,6 +592,8 @@ export const it: TranslationStructure = {
         file: 'File',
         fileEmpty: 'File vuoto',
         noChanges: 'Nessuna modifica da mostrare',
+        trackGitChanges: 'Tracciamento modifiche Git',
+        trackGitChangesDescription: 'Monitora le modifiche dei file in background usando git',
     },
 
     settingsVoice: {

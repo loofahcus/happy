@@ -578,6 +578,8 @@ export const en: TranslationStructure = {
         file: 'File',
         fileEmpty: 'File is empty',
         noChanges: 'No changes to display',
+        trackGitChanges: 'Track Git Changes',
+        trackGitChangesDescription: 'Monitor file changes in the background using git',
     },
 
     settingsVoice: {

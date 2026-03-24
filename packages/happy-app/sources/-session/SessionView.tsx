@@ -292,6 +292,8 @@ function SessionViewLoaded({ sessionId, session }: { sessionId: string, session:
         isMicActive: realtimeStatus === 'connected' || realtimeStatus === 'connecting'
     }), [handleMicrophonePress, realtimeStatus]);
 
+    const enableGitTracking = useSetting('enableGitTracking');
+
     // Trigger session visibility and initialize git status sync
     React.useLayoutEffect(() => {
 
@@ -299,9 +301,11 @@ function SessionViewLoaded({ sessionId, session }: { sessionId: string, session:
         sync.onSessionVisible(sessionId);
 
 
-        // Initialize git status sync for this session
-        gitStatusSync.getSync(sessionId);
-    }, [sessionId, realtimeStatus]);
+        // Initialize git status sync for this session (only if enabled)
+        if (enableGitTracking) {
+            gitStatusSync.getSync(sessionId);
+        }
+    }, [sessionId, realtimeStatus, enableGitTracking]);
 
     let content = (
         <>

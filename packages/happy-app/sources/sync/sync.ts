@@ -241,8 +241,10 @@ class Sync {
     onSessionVisible = (sessionId: string) => {
         this.getMessagesSync(sessionId).invalidate();
 
-        // Also invalidate git status sync for this session
-        gitStatusSync.getSync(sessionId).invalidate();
+        // Also invalidate git status sync for this session (only if enabled)
+        if (storage.getState().settings.enableGitTracking) {
+            gitStatusSync.getSync(sessionId).invalidate();
+        }
 
         // Notify voice assistant about session visibility
         const session = storage.getState().sessions[sessionId];
@@ -1741,8 +1743,10 @@ class Sync {
                 for (const item of sessionsData) {
                     if (typeof item !== 'string') {
                         this.getMessagesSync(item.id).invalidate();
-                        // Also invalidate git status on reconnection
-                        gitStatusSync.invalidate(item.id);
+                        // Also invalidate git status on reconnection (only if enabled)
+                        if (storage.getState().settings.enableGitTracking) {
+                            gitStatusSync.invalidate(item.id);
+                        }
                     }
                 }
             }
@@ -1841,7 +1845,7 @@ class Sync {
                         if (lastMessage.role === 'agent' && lastMessage.content[0] && lastMessage.content[0].type === 'tool-result') {
                             hasMutableTool = storage.getState().isMutableToolCall(updateData.body.sid, lastMessage.content[0].tool_use_id);
                         }
-                        if (hasMutableTool) {
+                        if (hasMutableTool && storage.getState().settings.enableGitTracking) {
                             gitStatusSync.invalidate(updateData.body.sid);
                         }
                     } else {
@@ -1929,7 +1933,7 @@ class Sync {
                     }]);
 
                     // Invalidate git status when agent state changes (files may have been modified)
-                    if (updateData.body.agentState) {
+                    if (updateData.body.agentState && storage.getState().settings.enableGitTracking) {
                         gitStatusSync.invalidate(sessionId);
 
                         // Check for new permission requests and notify voice assistant

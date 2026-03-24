@@ -573,6 +573,8 @@ export const ru: TranslationStructure = {
         file: 'Файл',
         fileEmpty: 'Файл пустой',
         noChanges: 'Нет изменений для отображения',
+        trackGitChanges: 'Отслеживание Git',
+        trackGitChangesDescription: 'Отслеживать изменения файлов в фоновом режиме через git',
     },
 
     settingsVoice: {

@@ -595,6 +595,8 @@ export const ja: TranslationStructure = {
         file: 'ファイル',
         fileEmpty: 'ファイルは空です',
         noChanges: '表示する変更はありません',
+        trackGitChanges: 'Git変更の追跡',
+        trackGitChangesDescription: 'バックグラウンドでgitを使用してファイルの変更を監視',
     },
 
     settingsVoice: {

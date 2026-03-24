@@ -564,6 +564,8 @@ export const zhHant: TranslationStructure = {
         file: '檔案',
         fileEmpty: '檔案為空',
         noChanges: '沒有要顯示的更改',
+        trackGitChanges: '追蹤 Git 變更',
+        trackGitChangesDescription: '在背景使用 git 監控檔案變更',
     },
 
     settingsVoice: {

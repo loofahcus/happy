@@ -11,10 +11,12 @@ import { ItemList } from '@/components/ItemList';
 import { Typography } from '@/constants/Typography';
 import { getGitStatusFiles, GitFileStatus, GitStatusFiles } from '@/sync/gitStatusFiles';
 import { searchFiles, FileItem } from '@/sync/suggestionFile';
-import { useSessionGitStatus, useSessionProjectGitStatus } from '@/sync/storage';
+import { useSessionGitStatus, useSessionProjectGitStatus, useSettingMutable } from '@/sync/storage';
 import { useUnistyles, StyleSheet } from 'react-native-unistyles';
 import { layout } from '@/components/layout';
 import { FileIcon } from '@/components/FileIcon';
+import { Switch } from '@/components/Switch';
+import { gitStatusSync } from '@/sync/gitStatusSync';
 
 export default function FilesScreen() {
     const route = useRoute();
@@ -31,6 +33,7 @@ export default function FilesScreen() {
     const sessionGitStatus = useSessionGitStatus(sessionId);
     const gitStatus = projectGitStatus || sessionGitStatus;
     const { theme } = useUnistyles();
+    const [enableGitTracking, setEnableGitTracking] = useSettingMutable('enableGitTracking');
     
     // Load git status files
     const loadGitStatusFiles = React.useCallback(async () => {
@@ -219,6 +222,47 @@ export default function FilesScreen() {
                     </Text>
                 </View>
             )}
+
+            {/* Git tracking toggle */}
+            <View style={{
+                flexDirection: 'row',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                paddingHorizontal: 16,
+                paddingVertical: 10,
+                borderBottomWidth: Platform.select({ ios: 0.33, default: 1 }),
+                borderBottomColor: theme.colors.divider,
+            }}>
+                <View style={{ flex: 1, marginRight: 12 }}>
+                    <Text style={{
+                        fontSize: 14,
+                        fontWeight: '500',
+                        color: theme.colors.text,
+                        ...Typography.default()
+                    }}>
+                        {t('files.trackGitChanges')}
+                    </Text>
+                    <Text style={{
+                        fontSize: 12,
+                        color: theme.colors.textSecondary,
+                        marginTop: 2,
+                        ...Typography.default()
+                    }}>
+                        {t('files.trackGitChangesDescription')}
+                    </Text>
+                </View>
+                <Switch
+                    value={enableGitTracking}
+                    onValueChange={(value) => {
+                        setEnableGitTracking(value);
+                        if (!value) {
+                            gitStatusSync.stop(sessionId);
+                        } else {
+                            gitStatusSync.getSync(sessionId).invalidate();
+                        }
+                    }}
+                />
+            </View>
 
             {/* Git Status List */}
             <ItemList style={{ flex: 1 }}>

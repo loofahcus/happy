@@ -563,6 +563,8 @@ export const pt: TranslationStructure = {
         file: 'Arquivo',
         fileEmpty: 'Arquivo está vazio',
         noChanges: 'Nenhuma alteração para exibir',
+        trackGitChanges: 'Rastrear alterações Git',
+        trackGitChangesDescription: 'Monitorar alterações de arquivos em segundo plano usando git',
     },
 
     settingsVoice: {
