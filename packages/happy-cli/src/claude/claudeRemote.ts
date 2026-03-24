@@ -273,18 +273,24 @@ export async function claudeRemote(opts: {
                 }
 
                 // Branch 1: This result is from a background task notification turn.
-                // Auto-drain by pushing a synthetic continue message instead of blocking.
+                // Only auto-drain if we are already in a drain cycle (isDrainTurn = true).
+                // If the notification arrived during a normal user turn, Claude already
+                // handled it — fall through and wait for the user to respond normally.
                 if (isTaskNotificationTurn) {
                     isTaskNotificationTurn = false;
-                    // Push a drain to clear this notification turn.
-                    // The previous drain (if any) already completed — its result was received,
-                    // so this is a new drain, not a double-drain race.
-                    isDrainTurn = true;
-                    suppressDrainMessages = true;
-                    logger.debug(`[claudeRemote] Task notification turn result - auto-draining (pending tasks: ${pendingBackgroundTaskCount})`);
-                    messages.push({ type: 'user', message: { role: 'user', content: 'This is a drain message, just ignore it and respond with a simple `OK`' } });
-                    updateThinking(true);
-                    continue;
+                    if (isDrainTurn) {
+                        // Continue draining: push another synthetic message to clear this turn.
+                        // The previous drain already completed (its result was received),
+                        // so this is a new drain, not a double-drain race.
+                        suppressDrainMessages = true;
+                        logger.debug(`[claudeRemote] Task notification in drain turn - continuing drain (pending tasks: ${pendingBackgroundTaskCount})`);
+                        messages.push({ type: 'user', message: { role: 'user', content: 'This is a drain message, just ignore it and respond with a simple `OK`' } });
+                        updateThinking(true);
+                        continue;
+                    }
+                    // Notification arrived during a normal user turn — Claude already processed it.
+                    // Fall through to normal result handling (wait for user).
+                    logger.debug(`[claudeRemote] Task notification in normal user turn - not draining, waiting for user (pending tasks: ${pendingBackgroundTaskCount})`);
                 }
                 // Branch 2: Normal result - wait for user input.
                 // If we just finished a drain cycle and a user message was consumed by
