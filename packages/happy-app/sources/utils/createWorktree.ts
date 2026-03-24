@@ -24,11 +24,14 @@ export async function createWorktree(
     );
     
     if (!gitCheck.success) {
+        const stderr = gitCheck.stderr || '';
+        const isNotGitRepo = stderr.toLowerCase().includes("not a git repository") ||
+            stderr.toLowerCase().includes("not a git repo");
         return {
             success: false,
             worktreePath: '',
             branchName: '',
-            error: 'Not a Git repository'
+            error: isNotGitRepo ? 'Not a Git repository' : (gitCheck.stderr || 'Failed to check Git repository')
         };
     }
     
