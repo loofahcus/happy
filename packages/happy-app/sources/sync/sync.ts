@@ -1895,12 +1895,15 @@ class Sync {
                         return;
                     }
 
+                    // Only decrypt fields that are present in the update.
+                    // When a field is absent, let ...freshSession provide the current value
+                    // to avoid overwriting newer data captured before the async decryption await.
                     const agentState = updateData.body.agentState && sessionEncryption
                         ? await sessionEncryption.decryptAgentState(updateData.body.agentState.version, updateData.body.agentState.value)
-                        : initialSession.agentState;
+                        : undefined;
                     const metadata = updateData.body.metadata && sessionEncryption
                         ? await sessionEncryption.decryptMetadata(updateData.body.metadata.version, updateData.body.metadata.value)
-                        : initialSession.metadata;
+                        : undefined;
 
                     // Re-read session AFTER async decryption to avoid using stale data
                     // Other handlers (e.g. new-message) may have updated the session during the await
@@ -1908,14 +1911,19 @@ class Sync {
 
                     this.applySessions([{
                         ...freshSession,
-                        agentState,
-                        agentStateVersion: updateData.body.agentState
-                            ? updateData.body.agentState.version
-                            : freshSession.agentStateVersion,
-                        metadata,
-                        metadataVersion: updateData.body.metadata
-                            ? updateData.body.metadata.version
-                            : freshSession.metadataVersion,
+                        // Only override agentState/metadata when the update actually contains them.
+                        // Otherwise freshSession (re-read from storage after await) provides the latest values.
+                        // Using initialSession.agentState as fallback was a race condition: initialSession was
+                        // captured BEFORE async decryption, so another handler may have updated the session
+                        // with newer agentState during the await, which we would then silently overwrite.
+                        ...(agentState !== undefined ? {
+                            agentState,
+                            agentStateVersion: updateData.body.agentState!.version,
+                        } : {}),
+                        ...(metadata !== undefined ? {
+                            metadata,
+                            metadataVersion: updateData.body.metadata!.version,
+                        } : {}),
                         updatedAt: updateData.createdAt,
                         seq: updateData.seq
                     }]);

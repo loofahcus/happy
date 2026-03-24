@@ -397,9 +397,15 @@ export const storage = create<StorageState>()((set, get) => {
                 const newSession = mergedSessions[session.id];
 
                 // Check if sessionMessages exists AND agentStateVersion is newer
+                // OR if there are unprocessed pending permission requests (defensive: ensures
+                // permissions are processed even if version check fails due to same-version updates)
                 const existingSessionMessages = updatedSessionMessages[session.id];
+                const hasUnprocessedRequests = existingSessionMessages && newSession.agentState?.requests
+                    && Object.keys(newSession.agentState.requests).some(
+                        id => !existingSessionMessages.reducerState.toolIdToMessageId.has(id)
+                    );
                 if (existingSessionMessages && newSession.agentState &&
-                    (!oldSession || newSession.agentStateVersion > (oldSession.agentStateVersion || 0))) {
+                    (hasUnprocessedRequests || !oldSession || newSession.agentStateVersion > (oldSession.agentStateVersion || 0))) {
 
                     // Check for NEW permission requests before processing
                     const currentRealtimeSessionId = getCurrentRealtimeSessionId();

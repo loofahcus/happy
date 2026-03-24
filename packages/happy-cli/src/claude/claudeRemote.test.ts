@@ -261,9 +261,9 @@ describe('claudeRemote – drain mechanism', () => {
         await promise;
 
         // User should see: notification response + real answer, but NOT drain "OK"
-        const visibleAssistants = onMessage.mock.calls
-            .filter(([m]: [SDKMessage]) => m.type === 'assistant')
-            .map(([m]: [SDKAssistantMessage]) => (m.message.content[0] as { text: string }).text);
+        const visibleAssistants = (onMessage.mock.calls as [SDKMessage][])
+            .filter(([m]) => m.type === 'assistant')
+            .map(([m]) => ((m as SDKAssistantMessage).message.content[0] as { text: string }).text);
 
         expect(visibleAssistants).toContain('Background task completed');
         expect(visibleAssistants).toContain('X is the answer');
@@ -330,9 +330,9 @@ describe('claudeRemote – drain mechanism', () => {
         await promise;
 
         // Verify visibility: notification responses visible, drain OKs suppressed
-        const visibleAssistants = onMessage.mock.calls
-            .filter(([m]: [SDKMessage]) => m.type === 'assistant')
-            .map(([m]: [SDKAssistantMessage]) => (m.message.content[0] as { text: string }).text);
+        const visibleAssistants = (onMessage.mock.calls as [SDKMessage][])
+            .filter(([m]) => m.type === 'assistant')
+            .map(([m]) => ((m as SDKAssistantMessage).message.content[0] as { text: string }).text);
 
         expect(visibleAssistants).toContain('Task A done');
         expect(visibleAssistants).not.toContain('Task B done'); // suppressed (during drain)
@@ -385,8 +385,8 @@ describe('claudeRemote – drain mechanism', () => {
         await promise;
 
         // All messages from drain turns should be suppressed
-        const visibleAssistants = onMessage.mock.calls
-            .filter(([m]: [SDKMessage]) => m.type === 'assistant');
+        const visibleAssistants = (onMessage.mock.calls as [SDKMessage][])
+            .filter(([m]) => m.type === 'assistant');
         expect(visibleAssistants).toHaveLength(0);
     });
 
@@ -440,9 +440,9 @@ describe('claudeRemote – drain mechanism', () => {
         await vi.waitFor(() => expect(onReady).toHaveBeenCalledTimes(1));
         await promise;
 
-        const visibleAssistants = onMessage.mock.calls
-            .filter(([m]: [SDKMessage]) => m.type === 'assistant')
-            .map(([m]: [SDKAssistantMessage]) => (m.message.content[0] as { text: string }).text);
+        const visibleAssistants = (onMessage.mock.calls as [SDKMessage][])
+            .filter(([m]) => m.type === 'assistant')
+            .map(([m]) => ((m as SDKAssistantMessage).message.content[0] as { text: string }).text);
 
         expect(visibleAssistants).toContain('Background task done');
         expect(visibleAssistants).toContain('Done!');
@@ -497,7 +497,7 @@ describe('claudeRemote – drain mechanism', () => {
         await promise;
 
         // The system 'other' and assistant 'OK' during drain should NOT appear
-        const allTypes = onMessage.mock.calls.map(([m]: [SDKMessage]) => `${m.type}:${(m as any).message?.content?.[0]?.text ?? (m as any).subtype ?? ''}`);
+        const allTypes = (onMessage.mock.calls as [SDKMessage][]).map(([m]) => `${m.type}:${(m as any).message?.content?.[0]?.text ?? (m as any).subtype ?? ''}`);
         expect(allTypes).not.toContain('system:other');
         expect(allTypes).not.toContain('assistant:OK');
         expect(allTypes).toContain('assistant:Real answer');
