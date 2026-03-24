@@ -12,6 +12,7 @@ import { PermissionResult } from "../sdk/types";
 import { PLAN_FAKE_REJECT, PLAN_FAKE_RESTART } from "../sdk/prompts";
 import { Session } from "../session";
 import { getToolName } from "./getToolName";
+import { mapToClaudeMode } from "./permissionMode";
 import { EnhancedMode, PermissionMode } from "../loop";
 import { getToolDescriptor } from "./getToolDescriptor";
 import { delay } from "@/utils/time";
@@ -57,6 +58,7 @@ export class PermissionHandler {
     }
 
     handleModeChange(mode: PermissionMode) {
+        mode = mapToClaudeMode(mode) as PermissionMode;
         this.permissionMode = mode;
     }
 
