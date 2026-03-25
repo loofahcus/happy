@@ -24,23 +24,44 @@ import { createPGlite } from "./storage/pgliteLoader";
 const dataDir = process.env.DATA_DIR || "./data";
 const pgliteDir = process.env.PGLITE_DIR || path.join(dataDir, "pglite");
 
+const MIGRATIONS_TRACKING_DDL = `
+    CREATE TABLE IF NOT EXISTS "_prisma_migrations" (
+        "id" TEXT PRIMARY KEY,
+        "migration_name" TEXT NOT NULL UNIQUE,
+        "finished_at" TIMESTAMPTZ,
+        "started_at" TIMESTAMPTZ NOT NULL DEFAULT now(),
+        "applied_steps_count" INTEGER NOT NULL DEFAULT 0,
+        "logs" TEXT
+    );
+`;
+
+async function openPGlite(dir: string) {
+    const pg = createPGlite(dir);
+    // The first exec call triggers WASM initialisation. If the data directory
+    // was created by an incompatible PGlite version it will throw ExitStatus.
+    try {
+        await pg.exec(MIGRATIONS_TRACKING_DDL);
+    } catch (e: any) {
+        if (e?.name === "ExitStatus") {
+            console.warn(`PGlite crashed (ExitStatus ${e.status}) — data directory may be from an incompatible version.`);
+            console.warn(`Wiping ${dir} and retrying with a fresh database...`);
+            try { await pg.close(); } catch (_) {}
+            fs.rmSync(dir, { recursive: true, force: true });
+            fs.mkdirSync(dir, { recursive: true });
+            const fresh = createPGlite(dir);
+            await fresh.exec(MIGRATIONS_TRACKING_DDL);
+            return fresh;
+        }
+        throw e;
+    }
+    return pg;
+}
+
 async function migrate() {
     console.log(`Migrating database in ${pgliteDir}...`);
     fs.mkdirSync(pgliteDir, { recursive: true });
 
-    const pg = createPGlite(pgliteDir);
-
-    // Create migrations tracking table
-    await pg.exec(`
-        CREATE TABLE IF NOT EXISTS "_prisma_migrations" (
-            "id" TEXT PRIMARY KEY,
-            "migration_name" TEXT NOT NULL UNIQUE,
-            "finished_at" TIMESTAMPTZ,
-            "started_at" TIMESTAMPTZ NOT NULL DEFAULT now(),
-            "applied_steps_count" INTEGER NOT NULL DEFAULT 0,
-            "logs" TEXT
-        );
-    `);
+    const pg = await openPGlite(pgliteDir);
 
     // Find migrations directory - try multiple locations
     let migrationsDirResolved = "";
