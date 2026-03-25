@@ -6,6 +6,7 @@ import { layout } from './layout';
 import { MultiTextInput, KeyPressEvent } from './MultiTextInput';
 import { Typography } from '@/constants/Typography';
 import { PermissionMode, ModelMode } from './PermissionModeSelector';
+import { abbreviateModelName } from './modelModeOptions';
 import { hapticsLight, hapticsError } from './haptics';
 import { Shaker, ShakeInstance } from './Shaker';
 import { StatusDot } from './StatusDot';
@@ -19,9 +20,9 @@ import { GitStatusBadge, useHasMeaningfulGitStatus } from './GitStatusBadge';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 import { useSetting } from '@/sync/storage';
 import { hackMode, hackModes } from '@/sync/modeHacks';
-import { Theme } from '@/theme';
 import { t } from '@/text';
 import { Metadata } from '@/sync/storageTypes';
+import { ContextHUD } from './ContextHUD';
 
 interface AgentInputProps {
     value: string;
@@ -57,9 +58,8 @@ interface AgentInputProps {
     usageData?: {
         inputTokens: number;
         outputTokens: number;
-        cacheCreation: number;
-        cacheRead: number;
         contextSize: number;
+        contextWindowSize: number;
     };
     alwaysShowContextSize?: boolean;
     onFileViewerPress?: () => void;
@@ -72,10 +72,10 @@ interface AgentInputProps {
     blockSend?: boolean;
     isSendDisabled?: boolean;
     isSending?: boolean;
+    actualModelName?: string | null;
     minHeight?: number;
 }
 
-const MAX_CONTEXT_SIZE = 190000;
 
 const stylesheet = StyleSheet.create((theme, runtime) => ({
     container: {
@@ -214,11 +214,6 @@ const stylesheet = StyleSheet.create((theme, runtime) => ({
         fontSize: 11,
         ...Typography.default(),
     },
-    contextWarningText: {
-        fontSize: 11,
-        marginLeft: 8,
-        ...Typography.default(),
-    },
 
     // Button styles
     actionButtonsContainer: {
@@ -282,21 +277,6 @@ const stylesheet = StyleSheet.create((theme, runtime) => ({
     },
 }));
 
-const getContextWarning = (contextSize: number, alwaysShow: boolean = false, theme: Theme) => {
-    const percentageUsed = (contextSize / MAX_CONTEXT_SIZE) * 100;
-    const percentageRemaining = Math.max(0, Math.min(100, 100 - percentageUsed));
-
-    if (percentageRemaining <= 5) {
-        return { text: t('agentInput.context.remaining', { percent: Math.round(percentageRemaining) }), color: theme.colors.warningCritical };
-    } else if (percentageRemaining <= 10) {
-        return { text: t('agentInput.context.remaining', { percent: Math.round(percentageRemaining) }), color: theme.colors.warning };
-    } else if (alwaysShow) {
-        // Show context remaining in neutral color when not near limit
-        return { text: t('agentInput.context.remaining', { percent: Math.round(percentageRemaining) }), color: theme.colors.warning };
-    }
-    return null; // No display needed
-};
-
 export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, AgentInputProps>((props, ref) => {
     const styles = stylesheet;
     const { theme } = useUnistyles();
@@ -346,9 +326,7 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
     }, [isSandboxEnabled]);
 
     // Calculate context warning
-    const contextWarning = props.usageData?.contextSize
-        ? getContextWarning(props.usageData.contextSize, props.alwaysShowContextSize ?? false, theme)
-        : null;
+    const hasUsageData = !!(props.usageData && props.usageData.contextWindowSize);
 
     const agentInputEnterToSend = useSetting('agentInputEnterToSend');
 
@@ -584,7 +562,7 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
                             styles.settingsOverlay,
                             { paddingHorizontal: screenWidth > 700 ? 0 : 8 }
                         ]}>
-                            <FloatingOverlay maxHeight={400} keyboardShouldPersistTaps="always">
+                            <FloatingOverlay maxHeight={620} keyboardShouldPersistTaps="always">
                                 {/* Permission Mode Section */}
                                 <View style={styles.overlaySection}>
                                     <Text style={styles.overlaySectionTitle}>
@@ -743,7 +721,7 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
                 )}
 
                 {/* Connection status, context warning, and permission mode */}
-                {(props.connectionStatus || contextWarning || (displayPermissionMode && permissionModeKey !== 'default')) && (
+                {(props.connectionStatus || hasUsageData || displayPermissionMode || props.modelMode) && (
                     <View style={{
                         flexDirection: 'row',
                         alignItems: 'center',
@@ -838,43 +816,62 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
                                     )}
                                 </>
                             )}
-                            {contextWarning && (
-                                <Text style={{
-                                    fontSize: 11,
-                                    color: contextWarning.color,
-                                    marginLeft: props.connectionStatus ? 8 : 0,
-                                    ...Typography.default()
-                                }}>
-                                    {props.connectionStatus ? '• ' : ''}{contextWarning.text}
-                                </Text>
+                            {hasUsageData && (
+                                <View style={{ marginLeft: props.connectionStatus ? 8 : 0, flex: 1 }}>
+                                    <ContextHUD
+                                        usageData={props.usageData as any}
+                                        alwaysShow={props.alwaysShowContextSize}
+                                        quota={props.metadata?.quota}
+                                    />
+                                </View>
                             )}
                         </View>
-                        {/* Permission badge — only shown when non-default */}
-                        {displayPermissionMode && permissionModeKey !== 'default' && (() => {
-                            const permColor = isSandboxedYoloMode ? '#4169E1' :
-                                permissionModeKey === 'acceptEdits' ? theme.colors.permission.acceptEdits :
-                                    permissionModeKey === 'bypassPermissions' ? theme.colors.permission.bypass :
-                                        permissionModeKey === 'plan' ? theme.colors.permission.plan :
-                                            permissionModeKey === 'read-only' ? theme.colors.permission.readOnly :
-                                                permissionModeKey === 'safe-yolo' ? theme.colors.permission.safeYolo :
-                                                    permissionModeKey === 'yolo' ? theme.colors.permission.yolo :
-                                                        theme.colors.textSecondary;
-                            const permIcon: 'play-forward' | 'pause' =
-                                permissionModeKey === 'plan' || permissionModeKey === 'read-only'
-                                    ? 'pause' : 'play-forward';
-                            return (
-                                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
-                                    <Ionicons name={permIcon} size={11} color={permColor} />
-                                    <Text style={{
-                                        fontSize: 11,
-                                        color: permColor,
-                                        ...Typography.default()
-                                    }}>
-                                        {withSandboxSuffix(displayPermissionMode.name, permissionModeKey)}
-                                    </Text>
-                                </View>
-                            );
-                        })()}
+                        {/* Permission badge and model */}
+                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                            {(() => {
+                                const modelLabel = props.modelMode && props.modelMode.key !== 'default'
+                                    ? props.modelMode.name
+                                    : abbreviateModelName(props.actualModelName);
+                                if (!modelLabel) return null;
+                                return (
+                                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+                                        <Octicons name="cpu" size={10} color={theme.colors.textSecondary} />
+                                        <Text style={{
+                                            fontSize: 11,
+                                            color: theme.colors.textSecondary,
+                                            ...Typography.default()
+                                        }}>
+                                            {modelLabel}
+                                        </Text>
+                                    </View>
+                                );
+                            })()}
+                            {displayPermissionMode && (() => {
+                                const permColor = isSandboxedYoloMode ? '#4169E1' :
+                                    permissionModeKey === 'acceptEdits' ? theme.colors.permission.acceptEdits :
+                                        permissionModeKey === 'bypassPermissions' ? theme.colors.permission.bypass :
+                                            permissionModeKey === 'plan' ? theme.colors.permission.plan :
+                                                permissionModeKey === 'read-only' ? theme.colors.permission.readOnly :
+                                                    permissionModeKey === 'safe-yolo' ? theme.colors.permission.safeYolo :
+                                                        permissionModeKey === 'yolo' ? theme.colors.permission.yolo :
+                                                            theme.colors.textSecondary;
+                                const permIcon: 'play-forward' | 'pause' =
+                                    permissionModeKey === 'plan' || permissionModeKey === 'read-only'
+                                        ? 'pause' : 'play-forward';
+                                return (
+                                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+                                        <Ionicons name={permIcon} size={11} color={permColor} />
+                                        <Text style={{
+                                            fontSize: 11,
+                                            color: permColor,
+                                            ...Typography.default()
+                                        }}>
+                                            {withSandboxSuffix(displayPermissionMode.name, permissionModeKey)}
+                                        </Text>
+                                    </View>
+                                );
+                            })()}
+                        </View>
                     </View>
                 )}
 

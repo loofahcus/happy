@@ -373,17 +373,16 @@ function SessionViewLoaded({ sessionId, session }: { sessionId: string, session:
             usageData={sessionUsage ? {
                 inputTokens: sessionUsage.inputTokens,
                 outputTokens: sessionUsage.outputTokens,
-                cacheCreation: sessionUsage.cacheCreation,
-                cacheRead: sessionUsage.cacheRead,
-                contextSize: sessionUsage.contextSize
+                contextSize: sessionUsage.contextSize,
+                contextWindowSize: sessionUsage.contextWindowSize,
             } : session.latestUsage ? {
                 inputTokens: session.latestUsage.inputTokens,
                 outputTokens: session.latestUsage.outputTokens,
-                cacheCreation: session.latestUsage.cacheCreation,
-                cacheRead: session.latestUsage.cacheRead,
-                contextSize: session.latestUsage.contextSize
-            } : undefined}
+                contextSize: session.latestUsage.contextSize,
+                contextWindowSize: session.latestUsage.contextWindowSize ?? 1000000,
+            } : alwaysShowContextSize ? { inputTokens: 0, outputTokens: 0, contextSize: 0, contextWindowSize: 1000000 } : undefined}
             alwaysShowContextSize={alwaysShowContextSize}
+            actualModelName={sessionUsage?.modelName ?? session.latestUsage?.modelName}
         />
     );
 

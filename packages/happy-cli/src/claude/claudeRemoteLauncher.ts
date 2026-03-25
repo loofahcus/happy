@@ -362,6 +362,7 @@ export async function claudeRemoteLauncher(session: Session): Promise<'switch' |
                             let p = pending;
                             pending = null;
                             permissionHandler.handleModeChange(p.mode.permissionMode);
+                            if (p.mode.model) { session.client.setLocalModelCode(p.mode.model); }
                             return p;
                         }
 
@@ -377,6 +378,7 @@ export async function claudeRemoteLauncher(session: Session): Promise<'switch' |
                             modeHash = msg.hash;
                             mode = msg.mode;
                             permissionHandler.handleModeChange(mode.permissionMode);
+                            if (mode.model) { session.client.setLocalModelCode(mode.model); }
                             return {
                                 message: msg.message,
                                 mode: msg.mode

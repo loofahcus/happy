@@ -48,16 +48,19 @@ global.fetch = function(...args) {
     const fetchPromise = originalFetch(...args);
     
     // Attach handlers to send fetch end event
-    const sendEnd = () => {
+    fetchPromise.then((response) => {
         writeMessage({
             type: 'fetch-end',
             id,
             timestamp: Date.now()
         });
-    };
-    
-    // Send end event on both success and failure
-    fetchPromise.then(sendEnd, sendEnd);
+    }, () => {
+        writeMessage({
+            type: 'fetch-end',
+            id,
+            timestamp: Date.now()
+        });
+    });
     
     // Return the original promise unchanged
     return fetchPromise;

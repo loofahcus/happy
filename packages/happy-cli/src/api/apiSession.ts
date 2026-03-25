@@ -11,9 +11,10 @@ import { AsyncLock } from '@/utils/lock';
 import { RpcHandlerManager } from './rpc/RpcHandlerManager';
 import { registerCommonHandlers } from '../modules/common/registerCommonHandlers';
 import { calculateCost } from '@/utils/pricing';
-import { type SessionEnvelope, type SessionTurnEndStatus } from '@slopus/happy-wire';
+import { createEnvelope, type SessionEnvelope, type SessionTurnEndStatus } from '@slopus/happy-wire';
 import {
     closeClaudeTurnWithStatus,
+    getContextWindowForModel,
     mapClaudeLogMessageToSessionEnvelopes,
     type ClaudeSessionProtocolState,
 } from '@/claude/utils/sessionProtocolMapper';
@@ -376,6 +377,22 @@ export class ApiSessionClient extends EventEmitter {
                 }
             }));
         }
+    }
+
+    setLocalModelCode(modelCode: string) {
+        this.claudeSessionProtocolState.localModelCode = modelCode;
+        logger.debug(`[SOCKET] Local model code set to: ${modelCode}`);
+        // Push updated context window to the app immediately so the HUD reflects the new model
+        const contextWindow = getContextWindowForModel(modelCode, modelCode);
+        const envelope = createEnvelope('agent', { t: 'service', text: `Model changed to ${modelCode}` }, {
+            usage: {
+                input_tokens: 0,
+                output_tokens: 0,
+                context_window: contextWindow,
+            },
+            model: modelCode,
+        });
+        this.sendSessionProtocolMessage(envelope);
     }
 
     closeClaudeSessionTurn(status: SessionTurnEndStatus = 'completed') {

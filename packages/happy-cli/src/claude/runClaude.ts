@@ -19,6 +19,7 @@ import { notifyDaemonSessionStarted } from '@/daemon/controlClient';
 import { initialMachineMetadata } from '@/daemon/run';
 import { startHappyServer } from '@/claude/utils/startHappyServer';
 import { startHookServer } from '@/claude/utils/startHookServer';
+import { fetchQuota } from "@/utils/quota";
 import { generateHookSettingsFile, cleanupHookSettingsFile } from '@/claude/utils/generateHookSettings';
 import { registerKillSessionHandler } from './registerKillSessionHandler';
 import { projectPath } from '../projectPath';
@@ -41,6 +42,8 @@ export interface StartOptions {
     claudeArgs?: string[]
     startedBy?: 'daemon' | 'terminal'
     noSandbox?: boolean
+    /** Enable Happy system prompt and MCP server injection (default: false) */
+    happyInject?: boolean
     /** JavaScript runtime to use for spawning Claude Code (default: 'node') */
     jsRuntime?: JsRuntime
     /** Session tag for joining an existing session (default: randomUUID()) */
@@ -199,9 +202,11 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
     // Create realtime session
     const session = api.sessionSyncClient(response);
 
-    // Start Happy MCP server
-    const happyServer = await startHappyServer(session);
-    logger.debug(`[START] Happy MCP server started at ${happyServer.url}`);
+    // Start Happy MCP server (only when --happy-inject is enabled)
+    const happyServer = options.happyInject ? await startHappyServer(session) : null;
+    if (happyServer) {
+        logger.debug(`[START] Happy MCP server started at ${happyServer.url}`);
+    }
 
     // Variable to track current session instance (updated via onSessionReady callback)
     // Used by hook server to notify Session when Claude changes session ID
@@ -410,11 +415,14 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
                 await session.close();
             }
 
+            // Stop quota interval
+            clearInterval(quotaInterval);
+
             // Stop caffeinate
             stopCaffeinate();
 
             // Stop Happy MCP server
-            happyServer.stop();
+            happyServer?.stop();
 
             // Stop Hook server and cleanup settings file
             hookServer.stop();
@@ -445,6 +453,20 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
 
     registerKillSessionHandler(session.rpcHandlerManager, cleanup);
 
+    // Start periodic quota fetch — updates session metadata every 60s
+    const quotaInterval = setInterval(async () => {
+        const quota = await fetchQuota();
+        if (quota !== null) {
+            session.updateMetadata((m) => ({ ...m, quota }));
+        }
+    }, 60_000);
+    // Fetch immediately on start
+    fetchQuota().then((quota) => {
+        if (quota !== null) {
+            session.updateMetadata((m) => ({ ...m, quota }));
+        }
+    });
+
     // Create claude loop
     const exitCode = await loop({
         path: workingDirectory,
@@ -453,7 +475,7 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
         startingMode: options.startingMode,
         messageQueue,
         api,
-        allowedTools: happyServer.toolNames.map(toolName => `mcp__happy__${toolName}`),
+        allowedTools: happyServer ? happyServer.toolNames.map(toolName => `mcp__happy__${toolName}`) : [],
         onModeChange: (newMode) => {
             session.sendSessionEvent({ type: 'switch', mode: newMode });
             session.updateAgentState((currentState) => ({
@@ -465,18 +487,19 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
             // Store reference for hook server callback
             currentSession = sessionInstance;
         },
-        mcpServers: {
+        mcpServers: happyServer ? {
             'happy': {
                 type: 'http' as const,
                 url: happyServer.url,
             }
-        },
+        } : {},
         session,
         claudeEnvVars: options.claudeEnvVars,
         claudeArgs: options.claudeArgs,
         sandboxConfig,
         hookSettingsPath,
-        jsRuntime: options.jsRuntime
+        jsRuntime: options.jsRuntime,
+        happyInject: options.happyInject
     });
 
     // Cleanup session resources (intervals, callbacks) - prevents memory leak
@@ -494,12 +517,15 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
     logger.debug('Closing session...');
     await session.close();
 
+    // Stop quota interval
+    clearInterval(quotaInterval);
+
     // Stop caffeinate before exiting
     stopCaffeinate();
     logger.debug('Stopped sleep prevention');
 
     // Stop Happy MCP server
-    happyServer.stop();
+    happyServer?.stop();
     logger.debug('Stopped Happy MCP server');
 
     // Stop Hook server and cleanup settings file

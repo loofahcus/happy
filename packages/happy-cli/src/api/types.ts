@@ -285,6 +285,11 @@ export type Metadata = {
   flavor?: string
   sandbox?: SandboxConfig | null
   dangerouslySkipPermissions?: boolean | null
+  quota?: {
+    spend: number;
+    budget: number;
+    fetchedAt: number;
+  } | null;
 };
 
 export type AgentState = {

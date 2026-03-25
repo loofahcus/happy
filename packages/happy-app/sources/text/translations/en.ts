@@ -392,7 +392,7 @@ export const en: TranslationStructure = {
     agentInput: {
         permissionMode: {
             title: 'PERMISSION MODE',
-            default: 'default permissions',
+            default: 'default',
             acceptEdits: 'accept edits',
             plan: 'plan',
             dontAsk: "don't ask",
@@ -413,7 +413,7 @@ export const en: TranslationStructure = {
         },
         codexPermissionMode: {
             title: 'CODEX PERMISSION MODE',
-            default: 'default permissions',
+            default: 'default',
             readOnly: 'read-only',
             safeYolo: 'safe yolo',
             yolo: 'yolo',
@@ -433,7 +433,7 @@ export const en: TranslationStructure = {
         },
         geminiPermissionMode: {
             title: 'GEMINI PERMISSION MODE',
-            default: 'default permissions',
+            default: 'default',
             autoEdit: 'auto edit',
             yolo: 'yolo',
             plan: 'plan',

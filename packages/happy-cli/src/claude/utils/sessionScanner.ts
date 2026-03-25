@@ -18,6 +18,7 @@ const INTERNAL_CLAUDE_EVENT_TYPES = new Set([
 ]);
 
 export async function createSessionScanner(opts: {
+    onModelChange?: (modelCode: string) => void,
     sessionId: string | null,
     workingDirectory: string
     onMessage: (message: RawJSONLines) => void
@@ -78,6 +79,13 @@ export async function createSessionScanner(opts: {
                 }
                 processedMessageKeys.add(key);
                 logger.debug(`[SESSION_SCANNER] Sending new message: type=${file.type}, uuid=${file.type === 'summary' ? file.leafUuid : file.uuid}`);
+                // Check for model changes (system or user local-command messages)
+                if (opts.onModelChange) {
+                    const modelCode = parseModelChangeFromMessage(file);
+                    if (modelCode) {
+                        opts.onModelChange(modelCode);
+                    }
+                }
                 opts.onMessage(file);
                 sent++;
             }
@@ -147,6 +155,54 @@ export type SessionScanner = ReturnType<typeof createSessionScanner>;
 //
 // Helpers
 //
+
+
+/**
+ * Parse model change from messages written by Claude Code's /model command.
+ * The /model output appears as a user-type message with content wrapped in
+ * <local-command-stdout> tags, or occasionally as a system-type message.
+ * Returns a model code string (e.g. "opus", "sonnet", "haiku") or undefined.
+ */
+function parseModelChangeFromMessage(message: RawJSONLines): string | undefined {
+    let text = '';
+    if (message.type === 'system') {
+        const raw = message as Record<string, unknown>;
+        text = typeof raw.content === 'string' ? raw.content : typeof raw.message === 'string' ? raw.message : '';
+    } else if (message.type === 'user') {
+        const content = message.message.content;
+        if (typeof content === 'string') {
+            text = content;
+        } else if (Array.isArray(content)) {
+            // content can be an array of content blocks; concatenate text parts
+            text = content
+                .filter((b: Record<string, unknown>) => typeof b.text === 'string')
+                .map((b: Record<string, unknown>) => b.text as string)
+                .join('\n');
+        }
+    } else {
+        return undefined;
+    }
+    // Strip XML wrapper: <local-command-stdout>...</local-command-stdout>
+    const stdoutMatch = text.match(/<local-command-stdout>([\s\S]*?)<\/local-command-stdout>/);
+    if (stdoutMatch) text = stdoutMatch[1];
+    // Strip ANSI escape codes (e.g. \x1b[1m, \x1b[22m)
+    text = text.replace(/\x1b\[[0-9;]*m/g, '');
+    // Match "Set model to <name>" or "Kept model as <name>"
+    const match = text.match(/(?:Set model to|Kept model as) (.+)/i);
+    if (!match) return undefined;
+    const displayName = match[1];
+    logger.debug(`[SESSION_SCANNER] Detected model change: "${displayName}"`);
+    // Extract base model name (lowercase, simplified)
+    const nameLower = displayName.toLowerCase();
+    let baseModel: string;
+    if (nameLower.includes('opus')) baseModel = 'opus';
+    else if (nameLower.includes('haiku')) baseModel = 'haiku';
+    else if (nameLower.includes('sonnet')) baseModel = 'sonnet';
+    else if (nameLower.includes('gemini')) baseModel = 'gemini';
+    else if (nameLower.includes('gpt')) baseModel = 'gpt';
+    else baseModel = 'claude'; // fallback
+    return baseModel;
+}
 
 function messageKey(message: RawJSONLines): string {
     if (message.type === 'user') {

@@ -1,4 +1,7 @@
 import { logger } from "@/ui/logger";
+import { readFile } from "node:fs/promises";
+import { join } from "node:path";
+import { homedir } from "node:os";
 import { claudeLocal, ExitCodeError } from "./claudeLocal";
 import { Session } from "./session";
 import { Future } from "@/utils/future";
@@ -6,10 +9,40 @@ import { createSessionScanner } from "./utils/sessionScanner";
 
 export type LauncherResult = { type: 'switch' } | { type: 'exit', code: number };
 
+
+/**
+ * Read the configured model from ~/.claude/settings.json.
+ * Returns the model code (e.g. "opus") or undefined if not found.
+ */
+async function readInitialModelCode(): Promise<string | undefined> {
+    try {
+        const settingsPath = join(homedir(), '.claude', 'settings.json');
+        const raw = await readFile(settingsPath, 'utf-8');
+        const settings = JSON.parse(raw);
+        if (typeof settings.model === 'string' && settings.model.length > 0) {
+            logger.debug(`[local] Read initial model from settings.json: ${settings.model}`);
+            return settings.model;
+        }
+    } catch {
+        logger.debug('[local] Could not read model from ~/.claude/settings.json');
+    }
+    return undefined;
+}
+
 export async function claudeLocalLauncher(session: Session): Promise<LauncherResult> {
+
+    // Read initial model from Claude Code settings
+    const initialModelCode = await readInitialModelCode();
+    if (initialModelCode) {
+        session.client.setLocalModelCode(initialModelCode);
+    }
 
     // Create scanner
     const scanner = await createSessionScanner({
+        onModelChange: (modelCode) => {
+            logger.debug(`[local] Model changed to: ${modelCode}`);
+            session.client.setLocalModelCode(modelCode);
+        },
         sessionId: session.sessionId,
         workingDirectory: session.path,
         onMessage: (message) => { 

@@ -13,6 +13,7 @@ const usageDataSchema = z.object({
     cache_read_input_tokens: z.number().optional(),
     output_tokens: z.number(),
     service_tier: z.string().optional(),
+    context_window: z.number().optional(),
 });
 
 export type UsageData = z.infer<typeof usageDataSchema>;
@@ -107,6 +108,14 @@ const sessionEnvelopeSchema = z.object({
         message: 'subagent must be a cuid2 value',
     }).optional(),
     ev: sessionEventSchema,
+    usage: z.object({
+        input_tokens: z.number(),
+        output_tokens: z.number(),
+        cache_creation_input_tokens: z.number().optional(),
+        cache_read_input_tokens: z.number().optional(),
+        context_window: z.number().optional(),
+    }).optional(),
+    model: z.string().optional(),
 }).superRefine((envelope, ctx) => {
     if (envelope.ev.t === 'service' && envelope.role !== 'agent') {
         ctx.addIssue({
@@ -519,6 +528,7 @@ export type NormalizedMessage = ({
     isSidechain: boolean,
     meta?: MessageMeta,
     usage?: UsageData,
+    model?: string,
 };
 
 function normalizeSessionEnvelope(
@@ -556,7 +566,9 @@ function normalizeSessionEnvelope(
             role: 'event',
             isSidechain: false,
             content: { type: 'ready' },
-            meta
+            meta,
+            usage: envelope.usage,
+            model: envelope.model
         } satisfies NormalizedMessage;
     }
 
@@ -577,7 +589,9 @@ function normalizeSessionEnvelope(
                 uuid: contentUUID,
                 parentUUID
             }],
-            meta
+            meta,
+            usage: envelope.usage,
+            model: envelope.model
         } satisfies NormalizedMessage;
     }
 
@@ -593,7 +607,9 @@ function normalizeSessionEnvelope(
                     type: 'text',
                     text: envelope.ev.text
                 },
-                meta
+                meta,
+                usage: envelope.usage,
+                model: envelope.model,
             } satisfies NormalizedMessage;
         }
 
@@ -616,7 +632,9 @@ function normalizeSessionEnvelope(
                     parentUUID
                 }
             ],
-            meta
+            meta,
+            usage: envelope.usage,
+            model: envelope.model
         } satisfies NormalizedMessage;
     }
 
@@ -636,7 +654,9 @@ function normalizeSessionEnvelope(
                 uuid: contentUUID,
                 parentUUID
             }],
-            meta
+            meta,
+            usage: envelope.usage,
+            model: envelope.model
         } satisfies NormalizedMessage;
     }
 
@@ -655,7 +675,9 @@ function normalizeSessionEnvelope(
                 uuid: contentUUID,
                 parentUUID
             }],
-            meta
+            meta,
+            usage: envelope.usage,
+            model: envelope.model
         } satisfies NormalizedMessage;
     }
 
@@ -692,7 +714,9 @@ function normalizeSessionEnvelope(
                 uuid: contentUUID,
                 parentUUID
             }],
-            meta
+            meta,
+            usage: envelope.usage,
+            model: envelope.model
         } satisfies NormalizedMessage;
     }
 
@@ -782,7 +806,8 @@ export function normalizeRawMessage(id: string, localId: string | null, createdA
                     isSidechain: raw.content.data.isSidechain ?? false,
                     content,
                     meta: raw.meta,
-                    usage: raw.content.data.message.usage
+                    usage: raw.content.data.message.usage,
+                    model: raw.content.data.message.model
                 };
             } else if (raw.content.data.type === 'user') {
                 if (!raw.content.data.uuid) {

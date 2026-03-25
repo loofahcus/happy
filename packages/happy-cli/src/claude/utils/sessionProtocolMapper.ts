@@ -4,9 +4,34 @@ import {
     createEnvelope,
     type SessionEnvelope,
     type SessionTurnEndStatus,
+    type SessionUsage,
 } from '@slopus/happy-wire';
 
+const CONTEXT_WINDOW_SIZES: { pattern: string; size: number }[] = [
+    { pattern: 'claude', size: 1_000_000 },
+    { pattern: 'gemini', size: 1_000_000 },
+    { pattern: 'gpt', size: 128_000 },
+];
+const DEFAULT_CONTEXT_WINDOW = 1_000_000;
+
+export function getContextWindowForModel(model: string | undefined, localModelCode?: string): number {
+    if (!model) return DEFAULT_CONTEXT_WINDOW;
+    // Check localModelCode first (from settings.json or /model command)
+    if (localModelCode) {
+        const localLower = localModelCode.toLowerCase();
+        for (const { pattern, size } of CONTEXT_WINDOW_SIZES) {
+            if (localLower.includes(pattern)) return size;
+        }
+    }
+    const lower = model.toLowerCase();
+    for (const { pattern, size } of CONTEXT_WINDOW_SIZES) {
+        if (lower.includes(pattern)) return size;
+    }
+    return DEFAULT_CONTEXT_WINDOW;
+}
+
 export type ClaudeSessionProtocolState = {
+    localModelCode?: string;
     currentTurnId: string | null;
     uuidToProviderSubagent?: Map<string, string>;
     taskPromptToSubagents?: Map<string, string[]>;
@@ -480,14 +505,40 @@ function mapClaudeLogMessageToSessionEnvelopesInternal(
         maybeEmitSubagentStart(state, turnId, subagent, envelopes);
         const blocks = Array.isArray(message.message?.content) ? message.message.content : [];
 
+        // Extract usage from assistant message to include on first content envelope
+        const rawUsage = (message as any).message?.usage;
+        const rawModel: string | undefined =
+            typeof (message as any).message?.model === 'string'
+                ? (message as any).message.model
+                : undefined;
+        const usage: SessionUsage | undefined =
+            rawUsage &&
+            typeof rawUsage.input_tokens === 'number' &&
+            typeof rawUsage.output_tokens === 'number'
+                ? {
+                    input_tokens: rawUsage.input_tokens,
+                    output_tokens: rawUsage.output_tokens,
+                    cache_creation_input_tokens: rawUsage.cache_creation_input_tokens,
+                    cache_read_input_tokens: rawUsage.cache_read_input_tokens,
+                    context_window: getContextWindowForModel(rawModel, state.localModelCode),
+                }
+                : undefined;
+        let usageAttached = false;
+
         for (const block of blocks) {
             if (block.type === 'text' && typeof block.text === 'string') {
-                envelopes.push(createEnvelope('agent', { t: 'text', text: block.text }, { turn: turnId, subagent }));
+                const textUsage = !usageAttached ? usage : undefined;
+                const textModel = !usageAttached ? rawModel : undefined;
+                usageAttached = usageAttached || !!usage;
+                envelopes.push(createEnvelope('agent', { t: 'text', text: block.text }, { turn: turnId, subagent, usage: textUsage, model: textModel }));
                 continue;
             }
 
             if (block.type === 'thinking' && typeof block.thinking === 'string') {
-                envelopes.push(createEnvelope('agent', { t: 'text', text: block.thinking, thinking: true }, { turn: turnId, subagent }));
+                const thinkingUsage = !usageAttached ? usage : undefined;
+                const thinkingModel = !usageAttached ? rawModel : undefined;
+                usageAttached = usageAttached || !!usage;
+                envelopes.push(createEnvelope('agent', { t: 'text', text: block.thinking, thinking: true }, { turn: turnId, subagent, usage: thinkingUsage, model: thinkingModel }));
                 continue;
             }
 
@@ -525,7 +576,8 @@ function mapClaudeLogMessageToSessionEnvelopesInternal(
                     title,
                     description: title,
                     args,
-                }, { turn: turnId, subagent }));
+                }, { turn: turnId, subagent, usage: !usageAttached ? usage : undefined, model: !usageAttached ? rawModel : undefined }));
+                usageAttached = usageAttached || !!usage;
                 const buffered = consumeBufferedSubagentMessages(state, call);
                 for (const bufferedMessage of buffered) {
                     const replay = mapClaudeLogMessageToSessionEnvelopesInternal(bufferedMessage, state);

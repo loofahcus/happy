@@ -38,11 +38,16 @@ export const MetadataSchema = z.object({
     tools: z.array(z.string()).optional(),
     slashCommands: z.array(z.string()).optional(),
     homeDir: z.string().optional(), // User's home directory on the machine
-    happyHomeDir: z.string().optional(), // Happy configuration directory 
+    happyHomeDir: z.string().optional(), // Happy configuration directory
     hostPid: z.number().optional(), // Process ID of the session
     flavor: z.string().nullish(), // Session flavor/variant identifier
     sandbox: z.any().nullish(), // Sandbox config metadata from CLI (or null when disabled)
     dangerouslySkipPermissions: z.boolean().nullish(), // Claude --dangerously-skip-permissions mode (or null when unknown)
+    quota: z.object({
+        spend: z.number(),
+        budget: z.number(),
+        fetchedAt: z.number(),
+    }).nullish(),
     lifecycleState: z.string().optional(),
     lifecycleStateSince: z.number().optional(),
     archivedBy: z.string().optional(),
@@ -105,6 +110,8 @@ export interface Session {
         cacheCreation: number;
         cacheRead: number;
         contextSize: number;
+        contextWindowSize: number;
+        modelName?: string;
         timestamp: number;
     } | null;
 }

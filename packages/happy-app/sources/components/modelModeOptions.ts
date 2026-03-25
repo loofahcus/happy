@@ -253,3 +253,56 @@ export function getSupportsWorktree(flavor: AgentFlavor): boolean {
     if (flavor === 'openclaw') return false;
     return true;
 }
+
+// Context window sizes by model identifier.
+// Uses substring matching: if the model string contains the key, the size applies.
+// Order matters — more specific patterns should come first.
+const CONTEXT_WINDOW_SIZES: { pattern: string; size: number }[] = [
+    // Default Claude models (1M)
+    { pattern: 'claude', size: 1_000_000 },
+    // Gemini models
+    { pattern: 'gemini', size: 1_000_000 },
+    // OpenAI / Codex models
+    { pattern: 'gpt', size: 128_000 },
+];
+
+const DEFAULT_CONTEXT_WINDOW = 1_000_000;
+
+/**
+ * Resolve the context window size for a model code.
+ * Tries substring matching against known patterns, falls back to 1M.
+ */
+export function getContextWindowForModel(modelCode: string | null | undefined): number {
+    if (!modelCode) return DEFAULT_CONTEXT_WINDOW;
+    const lower = modelCode.toLowerCase();
+    for (const { pattern, size } of CONTEXT_WINDOW_SIZES) {
+        if (lower.includes(pattern)) return size;
+    }
+    return DEFAULT_CONTEXT_WINDOW;
+}
+
+const MODEL_ABBREVIATIONS: { pattern: string; label: string }[] = [
+    { pattern: 'opus', label: 'opus' },
+    { pattern: 'sonnet', label: 'sonnet' },
+    { pattern: 'haiku', label: 'haiku' },
+    { pattern: 'gpt-5.4', label: 'gpt-5.4' },
+    { pattern: 'gpt-5.3', label: 'gpt-5.3' },
+    { pattern: 'gpt-5.2', label: 'gpt-5.2' },
+    { pattern: 'gpt-5.1', label: 'gpt-5.1' },
+    { pattern: 'gemini-2.5-pro', label: 'gemini pro' },
+    { pattern: 'gemini-2.5-flash-lite', label: 'gemini flash lite' },
+    { pattern: 'gemini-2.5-flash', label: 'gemini flash' },
+];
+
+/**
+ * Abbreviate a full model identifier to a short display name.
+ * e.g. "claude-sonnet-4-6-20250514" → "sonnet"
+ */
+export function abbreviateModelName(model: string | null | undefined): string | null {
+    if (!model) return null;
+    const lower = model.toLowerCase();
+    for (const { pattern, label } of MODEL_ABBREVIATIONS) {
+        if (lower.includes(pattern)) return label;
+    }
+    return null;
+}
