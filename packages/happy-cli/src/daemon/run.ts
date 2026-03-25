@@ -828,9 +828,10 @@ export async function startDaemon(): Promise<void> {
       // Write final session snapshot before cleanup (useful for doctor and hot-upgrade)
       try {
         const daemonStateBeforeCleanup = await readDaemonState();
-        if (daemonStateBeforeCleanup) {
-          writeDaemonState({ ...daemonStateBeforeCleanup, sessions: serializeSessions() });
-        }
+        writeDaemonState({
+          ...(daemonStateBeforeCleanup ?? fileState),
+          sessions: serializeSessions()
+        });
       } catch (shutdownWriteErr) {
         logger.debug('[DAEMON RUN] Failed to write sessions snapshot on shutdown:', shutdownWriteErr);
       }
