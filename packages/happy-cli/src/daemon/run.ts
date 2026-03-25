@@ -132,9 +132,15 @@ export async function startDaemon(): Promise<void> {
 
   // Check if already running
   // Check if running daemon version matches current CLI version
+  // Read sessions from state file BEFORE stopping old daemon.
+  // stopDaemon() causes the old daemon to run cleanupAndShutdown which deletes the file.
+  // Capturing sessions first ensures hot-upgrade recovery is possible.
+  const previousStateForRecovery = await readDaemonState();
+  const sessionsToRecover: PersistedTrackedSession[] = previousStateForRecovery?.sessions ?? [];
+
   const runningDaemonVersionMatches = await isDaemonRunningCurrentlyInstalledHappyVersion();
   if (!runningDaemonVersionMatches) {
-    logger.debug('[DAEMON RUN] Daemon version mismatch detected, restarting daemon with current CLI version');
+    logger.debug(`[DAEMON RUN] Daemon version mismatch detected, restarting. Sessions to recover: ${sessionsToRecover.length}`);
     await stopDaemon();
   } else {
     logger.debug('[DAEMON RUN] Daemon version matches, keeping existing daemon');
@@ -167,6 +173,20 @@ export async function startDaemon(): Promise<void> {
     // Setup state - key by PID
     const pidToTrackedSession = new Map<number, TrackedSession>();
 
+    // Recover sessions from the previous daemon instance.
+    // Each PID is verified alive before re-adding — dead processes are silently skipped.
+    for (const session of sessionsToRecover) {
+      try {
+        process.kill(session.pid, 0); // signal 0: check existence without sending a signal
+        pidToTrackedSession.set(session.pid, { ...session });
+        logger.debug(`[DAEMON RUN] Recovered session PID ${session.pid} (happySessionId: ${session.happySessionId ?? 'none'})`);
+      } catch {
+        logger.debug(`[DAEMON RUN] Skipping dead session PID ${session.pid} during recovery`);
+      }
+    }
+    if (sessionsToRecover.length > 0) {
+      logger.debug(`[DAEMON RUN] Recovery complete: ${pidToTrackedSession.size}/${sessionsToRecover.length} sessions alive`);
+    }
 
     /** Serialize current session map, stripping non-serializable ChildProcess. */
     const serializeSessions = (): PersistedTrackedSession[] =>
