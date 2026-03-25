@@ -9,8 +9,10 @@ import { ItemList } from '@/components/ItemList';
 import { Typography } from '@/constants/Typography';
 import { GitFileStatus } from '@/sync/gitStatusFiles';
 import { searchFiles, FileItem } from '@/sync/suggestionFile';
-import { useSessionGitStatus, useSessionProjectGitStatus } from '@/sync/storage';
+import { useSessionGitStatus, useSessionProjectGitStatus, useSessionGitTrackingEnabled, storage } from '@/sync/storage';
 import { useGitStatusFiles } from '@/hooks/useGitStatusFiles';
+import { Switch } from '@/components/Switch';
+import { gitStatusSync } from '@/sync/gitStatusSync';
 import { useUnistyles, StyleSheet } from 'react-native-unistyles';
 import { layout } from '@/components/layout';
 import { FileIcon } from '@/components/FileIcon';
@@ -32,6 +34,7 @@ export default React.memo(function FilesScreen() {
     const sessionGitStatus = useSessionGitStatus(sessionId!);
     const gitStatus = projectGitStatus || sessionGitStatus;
     const { theme } = useUnistyles();
+    const enableGitTracking = useSessionGitTrackingEnabled(sessionId!);
 
     // Refs for shaking deleted file items
     const shakerRefs = React.useRef(new Map<string, ShakeInstance>());
@@ -243,6 +246,47 @@ export default React.memo(function FilesScreen() {
                     </Text>
                 </View>
             )}
+
+            {/* Git tracking toggle */}
+            <View style={{
+                flexDirection: 'row',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                paddingHorizontal: 16,
+                paddingVertical: 10,
+                borderBottomWidth: Platform.select({ ios: 0.33, default: 1 }),
+                borderBottomColor: theme.colors.divider,
+            }}>
+                <View style={{ flex: 1, marginRight: 12 }}>
+                    <Text style={{
+                        fontSize: 14,
+                        fontWeight: '500',
+                        color: theme.colors.text,
+                        ...Typography.default()
+                    }}>
+                        {t('files.trackGitChanges')}
+                    </Text>
+                    <Text style={{
+                        fontSize: 12,
+                        color: theme.colors.textSecondary,
+                        marginTop: 2,
+                        ...Typography.default()
+                    }}>
+                        {t('files.trackGitChangesDescription')}
+                    </Text>
+                </View>
+                <Switch
+                    value={enableGitTracking}
+                    onValueChange={(value) => {
+                        storage.getState().updateSessionGitTracking(sessionId!, value);
+                        if (!value) {
+                            gitStatusSync.stop(sessionId!);
+                        } else {
+                            gitStatusSync.getSync(sessionId!).invalidate();
+                        }
+                    }}
+                />
+            </View>
 
             {/* Git Status List */}
             <ItemList style={{ flex: 1 }}>

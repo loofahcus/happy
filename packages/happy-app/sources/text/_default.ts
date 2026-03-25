@@ -201,6 +201,9 @@ export const en = {
         markdownCopyV2Subtitle: 'Long press opens copy modal',
         hideInactiveSessions: 'Hide inactive sessions',
         hideInactiveSessionsSubtitle: 'Show only active chats in your list',
+        gitTracking: 'Git Tracking',
+        gitTrackingEnabled: 'Background git tracking enabled for new sessions',
+        gitTrackingDisabled: 'Background git tracking disabled for new sessions',
     },
 
     errors: {
@@ -544,6 +547,8 @@ export const en = {
         fileEmpty: 'File is empty',
         noChanges: 'No changes to display',
         deleted: 'Deleted',
+        trackGitChanges: 'Track Git Changes',
+        trackGitChangesDescription: 'Monitor file changes in the background using git',
     },
 
     settingsVoice: {

@@ -204,6 +204,9 @@ export const zhHans: TranslationStructure = {
         markdownCopyV2Subtitle: '长按打开复制模态框',
         hideInactiveSessions: '隐藏非活跃会话',
         hideInactiveSessionsSubtitle: '仅在列表中显示活跃的聊天',
+        gitTracking: 'Git 跟踪',
+        gitTrackingEnabled: '新会话默认启用后台 Git 跟踪',
+        gitTrackingDisabled: '新会话默认禁用后台 Git 跟踪',
     },
 
     errors: {
@@ -547,6 +550,8 @@ export const zhHans: TranslationStructure = {
         fileEmpty: '文件为空',
         noChanges: '没有要显示的更改',
         deleted: '已删除',
+        trackGitChanges: '跟踪 Git 变更',
+        trackGitChangesDescription: '使用 git 在后台监控文件变更',
     },
 
     settingsVoice: {

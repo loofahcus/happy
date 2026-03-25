@@ -21,7 +21,7 @@ import { voiceHooks } from '@/realtime/hooks/voiceHooks';
 import { startRealtimeSession, stopRealtimeSession } from '@/realtime/RealtimeSession';
 import { gitStatusSync } from '@/sync/gitStatusSync';
 import { sessionAbort } from '@/sync/ops';
-import { storage, useIsDataReady, useLocalSetting, useRealtimeStatus, useSessionMessages, useSessionUsage, useSetting } from '@/sync/storage';
+import { storage, useIsDataReady, useLocalSetting, useRealtimeStatus, useSessionMessages, useSessionUsage, useSetting, useSessionGitTrackingEnabled } from '@/sync/storage';
 import { useSession } from '@/sync/storage';
 import { Session } from '@/sync/storageTypes';
 import { sync } from '@/sync/sync';
@@ -305,6 +305,8 @@ function SessionViewLoaded({ sessionId, session }: { sessionId: string, session:
         isMicActive: realtimeStatus === 'connected' || realtimeStatus === 'connecting'
     }), [handleMicrophonePress, realtimeStatus]);
 
+    const enableGitTracking = useSessionGitTrackingEnabled(sessionId);
+
     // Trigger session visibility and initialize git status sync
     React.useLayoutEffect(() => {
 
@@ -312,9 +314,11 @@ function SessionViewLoaded({ sessionId, session }: { sessionId: string, session:
         sync.onSessionVisible(sessionId);
 
 
-        // Initialize git status sync for this session
-        gitStatusSync.getSync(sessionId);
-    }, [sessionId, realtimeStatus]);
+        // Initialize git status sync for this session (only if enabled)
+        if (enableGitTracking) {
+            gitStatusSync.getSync(sessionId);
+        }
+    }, [sessionId, realtimeStatus, enableGitTracking]);
 
     let content = (
         <>

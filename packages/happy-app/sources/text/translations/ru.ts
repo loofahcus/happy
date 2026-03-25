@@ -184,6 +184,9 @@ export const ru: TranslationStructure = {
         markdownCopyV2Subtitle: 'Долгое нажатие открывает модальное окно копирования',
         hideInactiveSessions: 'Скрывать неактивные сессии',
         hideInactiveSessionsSubtitle: 'Показывать в списке только активные чаты',
+        gitTracking: 'Git-отслеживание',
+        gitTrackingEnabled: 'Фоновое отслеживание git включено для новых сессий',
+        gitTrackingDisabled: 'Фоновое отслеживание git отключено для новых сессий',
     },
 
     errors: {
@@ -555,6 +558,8 @@ export const ru: TranslationStructure = {
         fileEmpty: 'Файл пустой',
         noChanges: 'Нет изменений для отображения',
         deleted: 'Удалён',
+        trackGitChanges: 'Отслеживать изменения Git',
+        trackGitChangesDescription: 'Мониторинг изменений файлов в фоновом режиме через git',
     },
 
     settingsVoice: {

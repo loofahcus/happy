@@ -11,7 +11,7 @@ import { LocalSettings, applyLocalSettings } from "./localSettings";
 import { Purchases, customerInfoToPurchases } from "./purchases";
 import { Profile } from "./profile";
 import { UserProfile, RelationshipUpdatedEvent } from "./friendTypes";
-import { loadSettings, loadLocalSettings, saveLocalSettings, saveSettings, loadPurchases, savePurchases, loadProfile, saveProfile, loadSessionDrafts, saveSessionDrafts, loadSessionPermissionModes, saveSessionPermissionModes } from "./persistence";
+import { loadSettings, loadLocalSettings, saveLocalSettings, saveSettings, loadPurchases, savePurchases, loadProfile, saveProfile, loadSessionDrafts, saveSessionDrafts, loadSessionPermissionModes, saveSessionPermissionModes, loadSessionGitTracking, saveSessionGitTracking } from "./persistence";
 import type { PermissionModeKey } from '@/components/PermissionModeSelector';
 import type { CustomerInfo } from './revenueCat/types';
 import React from "react";
@@ -124,6 +124,7 @@ interface StorageState {
     updateSessionDraft: (sessionId: string, draft: string | null) => void;
     updateSessionPermissionMode: (sessionId: string, mode: string) => void;
     updateSessionModelMode: (sessionId: string, mode: string) => void;
+    updateSessionGitTracking: (sessionId: string, enabled: boolean | null) => void;
     // Artifact methods
     applyArtifacts: (artifacts: DecryptedArtifact[]) => void;
     addArtifact: (artifact: DecryptedArtifact) => void;
@@ -256,6 +257,7 @@ export const storage = create<StorageState>()((set, get) => {
     let profile = loadProfile();
     let sessionDrafts = loadSessionDrafts();
     let sessionPermissionModes = loadSessionPermissionModes();
+    let sessionGitTracking = loadSessionGitTracking();
     return {
         settings,
         settingsVersion: version,
@@ -309,6 +311,7 @@ export const storage = create<StorageState>()((set, get) => {
             // Load drafts and permission modes if sessions are empty (initial load)
             const savedDrafts = Object.keys(state.sessions).length === 0 ? sessionDrafts : {};
             const savedPermissionModes = Object.keys(state.sessions).length === 0 ? sessionPermissionModes : {};
+            const savedGitTracking = Object.keys(state.sessions).length === 0 ? sessionGitTracking : {};
 
             // Merge new sessions with existing ones
             const mergedSessions: Record<string, Session> = { ...state.sessions };
@@ -323,6 +326,8 @@ export const storage = create<StorageState>()((set, get) => {
                 const savedDraft = savedDrafts[session.id];
                 const existingPermissionMode = state.sessions[session.id]?.permissionMode;
                 const savedPermissionMode = savedPermissionModes[session.id];
+                const existingGitTracking = state.sessions[session.id]?.enableGitTracking;
+                const savedGitTrackingValue = savedGitTracking[session.id];
                 const defaultPermissionMode: PermissionModeKey = isSandboxEnabled(session.metadata) ? 'bypassPermissions' : 'default';
                 const resolvedPermissionMode: PermissionModeKey =
                     (existingPermissionMode && existingPermissionMode !== 'default' ? existingPermissionMode : undefined) ||
@@ -334,7 +339,8 @@ export const storage = create<StorageState>()((set, get) => {
                     ...session,
                     presence,
                     draft: existingDraft || savedDraft || session.draft || null,
-                    permissionMode: resolvedPermissionMode
+                    permissionMode: resolvedPermissionMode,
+                    enableGitTracking: existingGitTracking ?? savedGitTrackingValue ?? null
                 };
             });
 
@@ -879,6 +885,32 @@ export const storage = create<StorageState>()((set, get) => {
                 sessions: updatedSessions
             };
         }),
+        updateSessionGitTracking: (sessionId: string, enabled: boolean | null) => set((state) => {
+            const session = state.sessions[sessionId];
+            if (!session) return state;
+
+            const updatedSessions = {
+                ...state.sessions,
+                [sessionId]: {
+                    ...session,
+                    enableGitTracking: enabled
+                }
+            };
+
+            // Persist git tracking states (only non-null overrides)
+            const allStates: Record<string, boolean> = {};
+            Object.entries(updatedSessions).forEach(([id, sess]) => {
+                if (sess.enableGitTracking != null) {
+                    allStates[id] = sess.enableGitTracking;
+                }
+            });
+            saveSessionGitTracking(allStates);
+
+            return {
+                ...state,
+                sessions: updatedSessions
+            };
+        }),
         // Project management methods
         getProjects: () => projectManager.getProjects(),
         getProject: (projectId: string) => projectManager.getProject(projectId),
@@ -985,6 +1017,10 @@ export const storage = create<StorageState>()((set, get) => {
             const modes = loadSessionPermissionModes();
             delete modes[sessionId];
             saveSessionPermissionModes(modes);
+            
+            const gitTrackingStates = loadSessionGitTracking();
+            delete gitTrackingStates[sessionId];
+            saveSessionGitTracking(gitTrackingStates);
             
             // Rebuild sessionListViewData without the deleted session
             const sessionListViewData = buildSessionListViewData(remainingSessions);
@@ -1302,6 +1338,13 @@ export function useSocketStatus() {
 
 export function useSessionGitStatus(sessionId: string): GitStatus | null {
     return storage(useShallow((state) => state.sessionGitStatus[sessionId] ?? null));
+}
+export function useSessionGitTrackingEnabled(sessionId: string): boolean {
+    return storage(useShallow((state) => {
+        const session = state.sessions[sessionId];
+        if (session?.enableGitTracking != null) return session.enableGitTracking;
+        return state.settings.enableGitTracking;
+    }));
 }
 
 export function useSessionGitStatusFiles(sessionId: string): GitStatusFiles | null {

@@ -203,6 +203,9 @@ export const zhHant: TranslationStructure = {
         markdownCopyV2Subtitle: '長按開啟複製強制回應視窗',
         hideInactiveSessions: '隱藏非活躍工作階段',
         hideInactiveSessionsSubtitle: '僅在清單中顯示活躍的聊天',
+        gitTracking: 'Git 追蹤',
+        gitTrackingEnabled: '新工作階段預設啟用背景 Git 追蹤',
+        gitTrackingDisabled: '新工作階段預設停用背景 Git 追蹤',
     },
 
     errors: {
@@ -546,6 +549,8 @@ export const zhHant: TranslationStructure = {
         fileEmpty: '檔案為空',
         noChanges: '沒有要顯示的更改',
         deleted: '已刪除',
+        trackGitChanges: '追蹤 Git 變更',
+        trackGitChangesDescription: '使用 git 在背景監控檔案變更',
     },
 
     settingsVoice: {

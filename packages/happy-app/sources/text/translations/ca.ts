@@ -203,6 +203,9 @@ export const ca: TranslationStructure = {
         markdownCopyV2Subtitle: 'Pulsació llarga obre modal de còpia',
         hideInactiveSessions: 'Amaga les sessions inactives',
         hideInactiveSessionsSubtitle: 'Mostra només els xats actius a la llista',
+        gitTracking: 'Seguiment Git',
+        gitTrackingEnabled: 'Seguiment Git en segon pla habilitat per a noves sessions',
+        gitTrackingDisabled: 'Seguiment Git en segon pla deshabilitat per a noves sessions',
     },
 
     errors: {
@@ -546,6 +549,8 @@ export const ca: TranslationStructure = {
         fileEmpty: 'El fitxer està buit',
         noChanges: 'No hi ha canvis a mostrar',
         deleted: 'Eliminat',
+        trackGitChanges: 'Seguir Canvis Git',
+        trackGitChangesDescription: "Monitoritza els canvis de fitxers en segon pla amb git",
     },
 
     settingsVoice: {

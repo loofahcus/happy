@@ -202,6 +202,9 @@ export const pt: TranslationStructure = {
         markdownCopyV2Subtitle: 'Pressione e segure para abrir modal de cópia',
         hideInactiveSessions: 'Ocultar sessões inativas',
         hideInactiveSessionsSubtitle: 'Mostre apenas os chats ativos na sua lista',
+        gitTracking: 'Rastreamento Git',
+        gitTrackingEnabled: 'Rastreamento Git em segundo plano habilitado para novas sessões',
+        gitTrackingDisabled: 'Rastreamento Git em segundo plano desabilitado para novas sessões',
     },
 
     errors: {
@@ -545,6 +548,8 @@ export const pt: TranslationStructure = {
         fileEmpty: 'Arquivo está vazio',
         noChanges: 'Nenhuma alteração para exibir',
         deleted: 'Excluído',
+        trackGitChanges: 'Rastrear Alterações Git',
+        trackGitChangesDescription: 'Monitorar alterações de arquivos em segundo plano usando git',
     },
 
     settingsVoice: {

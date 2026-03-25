@@ -201,6 +201,9 @@ export const it: TranslationStructure = {
         markdownCopyV2Subtitle: 'Pressione lunga apre la finestra di copia',
         hideInactiveSessions: 'Nascondi sessioni inattive',
         hideInactiveSessionsSubtitle: 'Mostra solo le chat attive nella tua lista',
+        gitTracking: 'Tracciamento Git',
+        gitTrackingEnabled: 'Tracciamento Git in background abilitato per nuove sessioni',
+        gitTrackingDisabled: 'Tracciamento Git in background disabilitato per nuove sessioni',
     },
 
     errors: {
@@ -544,6 +547,8 @@ export const it: TranslationStructure = {
         fileEmpty: 'File vuoto',
         noChanges: 'Nessuna modifica da mostrare',
         deleted: 'Eliminato',
+        trackGitChanges: 'Traccia Modifiche Git',
+        trackGitChangesDescription: 'Monitora le modifiche ai file in background usando git',
     },
 
     settingsVoice: {

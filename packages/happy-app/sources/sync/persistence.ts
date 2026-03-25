@@ -223,6 +223,23 @@ export function saveSessionPermissionModes(modes: Record<string, string>) {
     safeSet('session-permission-modes', JSON.stringify(modes));
 }
 
+export function loadSessionGitTracking(): Record<string, boolean> {
+    const states = mmkv.getString('session-git-tracking');
+    if (states) {
+        try {
+            return JSON.parse(states);
+        } catch (e) {
+            console.error('Failed to parse session git tracking states', e);
+            return {};
+        }
+    }
+    return {};
+}
+
+export function saveSessionGitTracking(states: Record<string, boolean>) {
+    safeSet('session-git-tracking', JSON.stringify(states));
+}
+
 export function loadProfile(): Profile {
     const profile = mmkv.getString('profile');
     if (profile) {

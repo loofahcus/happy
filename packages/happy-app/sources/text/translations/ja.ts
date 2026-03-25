@@ -204,6 +204,9 @@ export const ja: TranslationStructure = {
         markdownCopyV2Subtitle: '長押しでコピーモーダルを開く',
         hideInactiveSessions: '非アクティブセッションを非表示',
         hideInactiveSessionsSubtitle: 'アクティブなチャットのみをリストに表示',
+        gitTracking: 'Git トラッキング',
+        gitTrackingEnabled: '新しいセッションでバックグラウンドGitトラッキングが有効',
+        gitTrackingDisabled: '新しいセッションでバックグラウンドGitトラッキングが無効',
     },
 
     errors: {
@@ -547,6 +550,8 @@ export const ja: TranslationStructure = {
         fileEmpty: 'ファイルは空です',
         noChanges: '表示する変更はありません',
         deleted: '削除済み',
+        trackGitChanges: 'Git変更を追跡',
+        trackGitChangesDescription: 'gitを使用してバックグラウンドでファイル変更を監視',
     },
 
     settingsVoice: {
