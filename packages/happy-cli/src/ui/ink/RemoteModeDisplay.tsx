@@ -51,14 +51,35 @@ export const RemoteModeDisplay: React.FC<RemoteModeDisplayProps> = ({ messageBuf
         }, 15000) // 15 seconds timeout
     }, [resetConfirmation])
 
+    // Use refs for rapidly-changing state read inside useInput.
+    // This prevents Ink's useInput from re-subscribing its stdin 'data'
+    // listener on every state change. Without refs, the useCallback deps
+    // include confirmationMode/actionInProgress, causing handler identity
+    // to change -> useInput re-runs its effect (remove old -> add new
+    // listener) -> keystrokes arriving in that gap are lost.
+    // This is the root cause of the "3 spaces needed" bug.
+    const confirmationModeRef = useRef(confirmationMode)
+    confirmationModeRef.current = confirmationMode
+    const actionInProgressRef = useRef(actionInProgress)
+    actionInProgressRef.current = actionInProgress
+
+    // Handler reads state from refs so its identity never changes ->
+    // useInput subscribes once and never re-subscribes -> no keystroke gaps.
+    // IMPORTANT: Refs must be updated IMMEDIATELY in the handler (before setState)
+    // because React state updates are batched and the ref won't reflect the new
+    // value until the next render. Without immediate ref updates, rapid keypresses
+    // (or even normal-speed presses if Ink's render cycle is slow) will read
+    // stale ref values and require extra presses.
     useInput(useCallback(async (input, key) => {
         // Don't process input if action is in progress
-        if (actionInProgress) return
+        if (actionInProgressRef.current) return
         
         // Handle Ctrl-C
         if (key.ctrl && input === 'c') {
-            if (confirmationMode === 'exit') {
+            if (confirmationModeRef.current === 'exit') {
                 // Second Ctrl-C, exit
+                confirmationModeRef.current = null
+                actionInProgressRef.current = 'exiting'
                 resetConfirmation()
                 setActionInProgress('exiting')
                 // Small delay to show the status message
@@ -66,6 +87,7 @@ export const RemoteModeDisplay: React.FC<RemoteModeDisplayProps> = ({ messageBuf
                 onExit?.()
             } else {
                 // First Ctrl-C, show confirmation
+                confirmationModeRef.current = 'exit'
                 setConfirmationWithTimeout('exit')
             }
             return
@@ -73,8 +95,10 @@ export const RemoteModeDisplay: React.FC<RemoteModeDisplayProps> = ({ messageBuf
 
         // Handle double space
         if (input === ' ') {
-            if (confirmationMode === 'switch') {
+            if (confirmationModeRef.current === 'switch') {
                 // Second space, switch to local
+                confirmationModeRef.current = null
+                actionInProgressRef.current = 'switching'
                 resetConfirmation()
                 setActionInProgress('switching')
                 // Small delay to show the status message
@@ -82,16 +106,18 @@ export const RemoteModeDisplay: React.FC<RemoteModeDisplayProps> = ({ messageBuf
                 onSwitchToLocal?.()
             } else {
                 // First space, show confirmation
+                confirmationModeRef.current = 'switch'
                 setConfirmationWithTimeout('switch')
             }
             return
         }
 
         // Any other key cancels confirmation
-        if (confirmationMode) {
+        if (confirmationModeRef.current) {
+            confirmationModeRef.current = null
             resetConfirmation()
         }
-    }, [confirmationMode, actionInProgress, onExit, onSwitchToLocal, setConfirmationWithTimeout, resetConfirmation]))
+    }, [onExit, onSwitchToLocal, setConfirmationWithTimeout, resetConfirmation]))
 
     const getMessageColor = (type: BufferedMessage['type']): string => {
         switch (type) {
