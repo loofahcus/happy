@@ -33,27 +33,25 @@ export class OutgoingMessageQueue {
         delay?: number,
         toolCallIds?: string[]
     }) {
-        this.lock.inLock(async () => {
-            const item: QueueItem = {
-                id: this.nextId++,
-                logMessage,
-                delayed: !!options?.delay,
-                delayMs: options?.delay || 0,
-                toolCallIds: options?.toolCallIds,
-                released: !options?.delay,  // Not delayed = already released
-                sent: false
-            };
-            
-            this.queue.push(item);
-            
-            // If delayed, set timer to release it
-            if (item.delayed) {
-                const timer = setTimeout(() => {
-                    this.releaseItem(item.id);
-                }, item.delayMs);
-                this.delayTimers.set(item.id, timer);
-            }
-        });
+        const item: QueueItem = {
+            id: this.nextId++,
+            logMessage,
+            delayed: !!options?.delay,
+            delayMs: options?.delay || 0,
+            toolCallIds: options?.toolCallIds,
+            released: !options?.delay,  // Not delayed = already released
+            sent: false
+        };
+        
+        this.queue.push(item);
+        
+        // If delayed, set timer to release it
+        if (item.delayed) {
+            const timer = setTimeout(() => {
+                this.releaseItem(item.id);
+            }, item.delayMs);
+            this.delayTimers.set(item.id, timer);
+        }
         
         // Try to process queue
         this.scheduleProcessing();

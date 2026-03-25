@@ -1,5 +1,5 @@
 import { EnhancedMode } from "./loop";
-import { query, type QueryOptions, type SDKMessage, type SDKSystemMessage, AbortError, SDKUserMessage } from '@/claude/sdk'
+import { query, type QueryOptions, type SDKMessage, type SDKSystemMessage, type SDKAssistantMessage, AbortError, SDKUserMessage } from '@/claude/sdk'
 import { mapToClaudeMode } from "./utils/permissionMode";
 import { claudeCheckSession } from "./utils/claudeCheckSession";
 import { join, resolve } from 'node:path';
@@ -31,7 +31,7 @@ export async function claudeRemote(opts: {
 
     // Dynamic parameters
     nextMessage: () => Promise<{ message: string, mode: EnhancedMode } | null>,
-    onReady: () => void,
+    onReady: () => void | Promise<void>,
     isAborted: (toolCallId: string) => boolean,
 
     // Callbacks
@@ -145,15 +145,48 @@ export async function claudeRemote(opts: {
         }
     };
 
-    // Push initial message
+    // Background task drain mechanism.
+    // When Claude Code has pending background task notifications, they are delivered
+    // as system messages (subtype: task_notification) during a turn. Two cases:
+    //
+    // A. Drain cycle (isDrainTurn = true): started by resume-without-prompt to unblock
+    //    stdin. If a notification arrives during a drain turn, only push another drain
+    //    message if none are already queued (outstandingDrainCount prevents orphans).
+    //    Continue until no more notifications, then wait for real user input.
+    //
+    // B. Normal user turn (inline): notification arrives while Claude is processing a real
+    //    message. Claude already handled it inline — do nothing, wait for user response.
+    //
+    // C. Auto-delivered notification: SDK delivers the notification as a separate sub-turn
+    //    BEFORE processing the pending user message. bgCountAtLastPush > 0 detects this —
+    //    skip onReady/nextMessage and let the for-await loop process the user message response.
+    let pendingBackgroundTaskCount = 0;
+    let isTaskNotificationTurn = false;
+    let isDrainTurn = false;
+    let outstandingDrainCount = 0;  // Track drain messages pushed to SDK queue but not yet consumed
+    let bgCountAtLastPush = 0;  // pendingBackgroundTaskCount at the time the last user message was pushed
+
+    const DRAIN_MESSAGE = "This is a drain message, just ignore it and respond with a simple `OK`";
+
+    // Push initial message - always push something so stream-json stdin is unblocked.
+    // For resume without prompt, send a drain message and suppress it from webapp.
     let messages = new PushableAsyncIterable<SDKUserMessage>();
+    const isResumeWithoutPrompt = !!startFrom && !initial.message.trim();
+    if (isResumeWithoutPrompt) { isDrainTurn = true; outstandingDrainCount++; }
+    // Send historical messages to client when resuming a session (first spawn only)
+    const isFirstResume = opts.claudeArgs?.includes('--resume') ?? false;
+    if (isFirstResume && startFrom && opts.onResumeHistory) {
+        await opts.onResumeHistory(startFrom);
+    }
     messages.push({
         type: 'user',
         message: {
             role: 'user',
-            content: initial.message,
+            content: isResumeWithoutPrompt ? DRAIN_MESSAGE : initial.message,
         },
     });
+    bgCountAtLastPush = pendingBackgroundTaskCount;
+    if (!isResumeWithoutPrompt) { pendingUserMessage = { message: initial.message, mode: initial.mode }; }
 
     // Start the loop
     const response = query({
@@ -168,18 +201,55 @@ export async function claudeRemote(opts: {
         for await (const message of response) {
             logger.debugLargeJson(`[claudeRemote] Message ${message.type}`, message);
 
-            // Handle messages
-            opts.onMessage(message);
+            // Track background task lifecycle and detect task_notification turns
+            if (message.type === 'system') {
+                const subtype = (message as any).subtype;
+                if (subtype === 'task_started') {
+                    pendingBackgroundTaskCount++;
+                    logger.debug(`[claudeRemote] Background task started, pending count: ${pendingBackgroundTaskCount}`);
+                }
+                if (subtype === 'task_notification') {
+                    pendingBackgroundTaskCount = Math.max(0, pendingBackgroundTaskCount - 1);
+                    isTaskNotificationTurn = true;
+                    logger.debug(`[claudeRemote] Task notification received, pending count: ${pendingBackgroundTaskCount}`);
+                }
+            }
+
+            // If an assistant message arrives after a task_notification, the notification was
+            // delivered inline (not as a separate sub-turn). Reset the flag so the next result
+            // is not misclassified as a notification sub-turn result, which would cause a hang.
+            if (message.type === 'assistant' && isTaskNotificationTurn) {
+                logger.debug('[claudeRemote] Assistant message after task_notification — inline notification, clearing isTaskNotificationTurn');
+                isTaskNotificationTurn = false;
+            }
+
+            // Always suppress drain-related messages and strip PONG from mixed content.
+            // PONG-only responses and DRAIN_MESSAGE echoes are never legitimate content.
+            let messageToForward: SDKMessage | null = message;
+            if (message.type === 'user' && typeof (message as SDKUserMessage).message?.content === 'string'
+                && (message as SDKUserMessage).message.content === DRAIN_MESSAGE) {
+                messageToForward = null;
+            } else if (message.type === 'assistant') {
+                const c = (message as SDKAssistantMessage).message?.content as any;
+                if (typeof c === 'string' && c.trim() === 'PONG') {
+                    messageToForward = null;
+                } else if (Array.isArray(c) && c.length === 1 && c[0].type === 'text') {
+                    const text = c[0].text ?? '';
+                    if (text.trim() === 'PONG') {
+                        messageToForward = null;
+                    } else if (/^PONG\s*\n/.test(text)) {
+                        const stripped = text.replace(/^PONG\s*\n+/, '');
+                        messageToForward = { ...message as SDKAssistantMessage, message: { ...(message as SDKAssistantMessage).message, content: [{ ...c[0], text: stripped }] } } as SDKMessage;
+                        logger.debug('[claudeRemote] Stripped PONG prefix from mixed assistant content');
+                    }
+                }
+            }
+            if (messageToForward) { opts.onMessage(messageToForward); }
 
             // Handle special system messages
             if (message.type === 'system' && message.subtype === 'init') {
-                // Start thinking when session initializes
                 updateThinking(true);
-
                 const systemInit = message as SDKSystemMessage;
-
-                // Session id is still in memory, wait until session file is written to disk
-                // Start a watcher for to detect the session id
                 if (systemInit.session_id) {
                     logger.debug(`[claudeRemote] Waiting for session file to be written to disk: ${systemInit.session_id}`);
                     const projectDir = getProjectPath(opts.path);
@@ -189,24 +259,53 @@ export async function claudeRemote(opts: {
                 }
             }
 
-            // Handle result messages
+            // Handle result messages - with drain mechanism for background task notifications
             if (message.type === 'result') {
                 updateThinking(false);
-                logger.debug('[claudeRemote] Result received, exiting claudeRemote');
-
-                // Send completion messages
                 if (isCompactCommand) {
                     logger.debug('[claudeRemote] Compaction completed');
-                    if (opts.onCompletionEvent) {
-                        opts.onCompletionEvent('Compaction completed');
-                    }
+                    if (opts.onCompletionEvent) { opts.onCompletionEvent('Compaction completed'); }
                     isCompactCommand = false;
                 }
 
-                // Send ready event
-                opts.onReady();
+                // Branch 1: Result from a task notification turn.
+                if (isTaskNotificationTurn) {
+                    isTaskNotificationTurn = false;
+                    if (isDrainTurn) {
+                        logger.debug(`[claudeRemote] Task notification in drain turn - continuing drain (pending: ${pendingBackgroundTaskCount}, outstanding drains: ${outstandingDrainCount})`);
+                        outstandingDrainCount = Math.max(0, outstandingDrainCount - 1);
+                        if (outstandingDrainCount <= 0) {
+                            outstandingDrainCount++;
+                            messages.push({ type: 'user', message: { role: 'user', content: DRAIN_MESSAGE } });
+                        }
+                        updateThinking(true);
+                        continue;
+                    }
+                    // Auto-delivered notification: SDK processes the notification as a separate
+                    // sub-turn before the real user message. If pendingUserMessage is set, the
+                    // user message has not been processed yet — continue to read its response.
+                    if (pendingUserMessage) {
+                        logger.debug(`[claudeRemote] Notification sub-turn with pending user message, continuing to user message response`);
+                        continue;
+                    }
+                    // Inline notification (no pending user message) — fall through to Done.
+                }
 
-                // Push next message
+                // Decrement outstanding drain counter for completed drain turns
+                if (isDrainTurn) {
+                    outstandingDrainCount = Math.max(0, outstandingDrainCount - 1);
+                }
+
+                // Clear drain state when all outstanding drain messages are consumed
+                if (outstandingDrainCount <= 0) {
+                    isDrainTurn = false;
+                }
+
+
+                // Done
+                logger.debug('[claudeRemote] Result received, waiting for next message');
+                pendingUserMessage = null;
+                await opts.onReady();
                 const next = await opts.nextMessage();
                 if (!next) {
                     messages.end();
@@ -214,6 +313,7 @@ export async function claudeRemote(opts: {
                 }
                 mode = next.mode;
                 messages.push({ type: 'user', message: { role: 'user', content: next.message } });
+                bgCountAtLastPush = pendingBackgroundTaskCount;
             }
 
             // Handle tool result

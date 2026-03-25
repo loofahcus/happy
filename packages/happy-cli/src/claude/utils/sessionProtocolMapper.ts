@@ -391,11 +391,14 @@ function closeTurn(
     status: SessionTurnEndStatus,
     envelopes: SessionEnvelope[],
 ): void {
+    // If no turn is active, create one so the webapp always receives a
+    // turn-start / turn-end pair. This can happen when the SDK returns a
+    // result without any assistant content (e.g., empty response after drain).
     if (!state.currentTurnId) {
-        return;
+        ensureTurn(state, envelopes);
     }
 
-    envelopes.push(createEnvelope('agent', { t: 'turn-end', status }, { turn: state.currentTurnId }));
+    envelopes.push(createEnvelope('agent', { t: 'turn-end', status }, { turn: state.currentTurnId! }));
     state.currentTurnId = null;
     clearSubagentTracking(state);
 }

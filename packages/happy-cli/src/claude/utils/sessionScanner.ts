@@ -185,6 +185,26 @@ async function readSessionLog(projectDir: string, sessionId: string): Promise<Ra
             }
             let message = JSON.parse(l);
             
+            // Filter out drain mechanism messages (keepalive pings and PONG responses)
+            if (message.type === 'user' && typeof message.message?.content === 'string'
+                && message.message.content.startsWith('[SYSTEM: Internal keepalive ping')) {
+                continue;
+            }
+            if (message.type === 'user' && typeof message.message?.content === 'string'
+                && message.message.content === 'This is a drain message, just ignore it and respond with a simple `OK`') {
+                continue;
+            }
+            if (message.type === 'assistant' && Array.isArray(message.message?.content)
+                && message.message.content.length === 1 && message.message.content[0]?.type === 'text') {
+                const pongText = message.message.content[0]?.text ?? '';
+                if (pongText.trim() === 'PONG' || pongText.trim() === 'OK') {
+                    continue;
+                }
+                if (/^PONG\s*\n/.test(pongText)) {
+                    message = { ...message, message: { ...message.message, content: [{ ...message.message.content[0], text: pongText.replace(/^PONG\s*\n+/, '') }] } };
+                }
+            }
+
             // Silently skip known internal Claude Code events
             // These are state/tracking events, not conversation messages
             if (message.type && INTERNAL_CLAUDE_EVENT_TYPES.has(message.type)) {

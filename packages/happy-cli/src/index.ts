@@ -635,6 +635,10 @@ ${chalk.bold('To clean up runaway processes:')} Use ${chalk.cyan('happy doctor c
         unknownArgs.push(arg)
       } else if (arg === '--happy-starting-mode') {
         options.startingMode = z.enum(['local', 'remote']).parse(args[++i])
+      } else if (arg === '--happy-session-tag') {
+        options.sessionTag = args[++i]
+      } else if (arg === '--happy-inject') {
+        options.happyInject = true
       } else if (arg === '--yolo') {
         // Shortcut for --dangerously-skip-permissions
         unknownArgs.push('--dangerously-skip-permissions')
