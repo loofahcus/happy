@@ -21,6 +21,8 @@ export class Session {
     readonly hookSettingsPath: string;
     /** JavaScript runtime to use for spawning Claude Code (default: 'node') */
     readonly jsRuntime: JsRuntime;
+    /** Enable Happy system prompt and MCP server injection (default: false) */
+    readonly happyInject: boolean;
 
     sessionId: string | null;
     mode: 'local' | 'remote' = 'local';
@@ -49,6 +51,8 @@ export class Session {
         hookSettingsPath: string,
         /** JavaScript runtime to use for spawning Claude Code (default: 'node') */
         jsRuntime?: JsRuntime,
+        /** Enable Happy system prompt and MCP server injection (default: false) */
+        happyInject?: boolean,
     }) {
         this.path = opts.path;
         this.api = opts.api;
@@ -64,6 +68,7 @@ export class Session {
         this._onModeChange = opts.onModeChange;
         this.hookSettingsPath = opts.hookSettingsPath;
         this.jsRuntime = opts.jsRuntime ?? 'node';
+        this.happyInject = opts.happyInject ?? false;
 
         // Start keep alive
         this.client.keepAlive(this.thinking, this.mode);

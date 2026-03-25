@@ -46,6 +46,8 @@ export async function claudeLocal(opts: {
     /** Path to temporary settings file with SessionStart hook (optional - for session tracking) */
     hookSettingsPath?: string,
     sandboxConfig?: SandboxConfig,
+    /** Enable Happy system prompt and MCP server injection (default: false) */
+    happyInject?: boolean,
 }) {
 
     // Ensure project directory exists
@@ -209,7 +211,9 @@ export async function claudeLocal(opts: {
             }
             // If hasResumeFlag && !startFrom: --resume is in claudeArgs, let Claude handle it
 
-            args.push('--append-system-prompt', systemPrompt);
+            if (opts.happyInject) {
+                args.push('--append-system-prompt', systemPrompt);
+            }
 
             if (opts.mcpServers && Object.keys(opts.mcpServers).length > 0) {
                 args.push('--mcp-config', JSON.stringify({ mcpServers: opts.mcpServers }));
