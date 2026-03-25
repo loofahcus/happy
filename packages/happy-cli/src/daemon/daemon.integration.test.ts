@@ -27,7 +27,7 @@ import {
   notifyDaemonSessionStarted, 
   stopDaemon
 } from '@/daemon/controlClient';
-import { readDaemonState, clearDaemonState } from '@/persistence';
+import { readDaemonState, clearDaemonState, DaemonLocallyPersistedState, PersistedTrackedSession } from '@/persistence';
 import { Metadata } from '@/api/types';
 import { spawnHappyCLI } from '@/utils/spawnHappyCLI';
 import { getLatestDaemonLog } from '@/ui/logger';
@@ -493,6 +493,62 @@ describe.skipIf(!await isServerHealthy())('Daemon Integration Tests', { timeout:
     expect(state!.sessions).toBeDefined();
 
     const recovered = state!.sessions!.find(s => s.happySessionId === 'session-write-test-001');
+    expect(recovered).toBeDefined();
+    expect(recovered!.pid).toBe(process.pid);
+    expect(recovered!.startedBy).toBe('happy directly - likely by user from terminal');
+  });
+
+
+  it('should recover sessions from previous daemon state on restart', async () => {
+    // Stop the daemon started by beforeEach
+    await stopDaemon();
+    await waitFor(async () => !existsSync(configuration.daemonStateFile), 3000);
+
+    // Write a fake state file that simulates what a previous daemon would have written.
+    // Using process.pid guarantees the "session process" is alive for the liveness check.
+    const fakeSession: PersistedTrackedSession = {
+      startedBy: 'happy directly - likely by user from terminal',
+      happySessionId: 'session-recovery-test-001',
+      pid: process.pid,  // test process is alive, so recovery will succeed
+      happySessionMetadataFromLocalWebhook: {
+        path: '/test/path',
+        host: 'test-host',
+        homeDir: '/test/home',
+        happyHomeDir: '/test/happy-home',
+        happyLibDir: '/test/happy-lib',
+        happyToolsDir: '/test/happy-tools',
+        hostPid: process.pid,
+        startedBy: 'terminal',
+        machineId: 'test-machine-recovery'
+      }
+    };
+    const fakeState: DaemonLocallyPersistedState = {
+      pid: 0,           // placeholder — not used for recovery
+      httpPort: 0,      // placeholder
+      startTime: new Date().toLocaleString(),
+      startedWithCliVersion: '0.0.0-fake',
+      sessions: [fakeSession]
+    };
+
+    // writeFileSync is already imported from 'fs' at line 19
+    writeFileSync(configuration.daemonStateFile, JSON.stringify(fakeState, null, 2), 'utf-8');
+
+    // Start a new daemon — it will read the fake state file and recover the session
+    void spawnHappyCLI(['daemon', 'start'], { stdio: 'ignore' });
+
+    await waitFor(async () => {
+      const state = await readDaemonState();
+      return state !== null && state.pid !== 0;
+    }, 15_000, 250);
+
+    // The recovered session should appear in the tracked list
+    await waitFor(async () => {
+      const sessions = await listDaemonSessions();
+      return sessions.some((s: any) => s.happySessionId === 'session-recovery-test-001');
+    }, 5_000, 200);
+
+    const sessions = await listDaemonSessions();
+    const recovered = sessions.find((s: any) => s.happySessionId === 'session-recovery-test-001');
     expect(recovered).toBeDefined();
     expect(recovered!.pid).toBe(process.pid);
     expect(recovered!.startedBy).toBe('happy directly - likely by user from terminal');
