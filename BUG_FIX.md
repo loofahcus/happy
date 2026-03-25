@@ -129,3 +129,46 @@ Changed `allowTools` → `allowedTools` in the agent state update so the app rec
 |---|---|
 | `packages/happy-cli/src/claude/utils/permissionHandler.ts` | Added `softReset()` method; fixed `allowTools` → `allowedTools` field name |
 | `packages/happy-cli/src/claude/claudeRemoteLauncher.ts` | Changed loop `finally` block from `reset()` to `softReset()` |
+
+---
+
+## 4. Permission Request Not Appearing on Webapp (Race Condition)
+
+### Problem
+
+Permission prompts intermittently fail to appear on the webapp. When this happens, the CLI hangs waiting for approval while the webapp shows no permission UI — a deadlock. Once it occurs in a session, subsequent permissions also fail to appear.
+
+### Root cause
+
+A race condition between tool_use message delivery and agentState update:
+
+1. `handlePermissionRequest` released the tool_use message **before** updating agentState
+2. When the message arrived at the webapp first, the reducer ran with **stale** agentState (no pending permission)
+3. The reducer created the tool message **without** permission info
+4. When the agentState update arrived later, `applySessions` updated the store but **never triggered a reducer re-run**
+5. Since Claude blocks in `canCallTool` waiting for approval, no new messages are generated — the reducer never re-runs — **deadlock**
+
+The `6b74f59c` commit (changing `previousSessionId` from `null` to `session.sessionId`) removed the initial `reset()` call that previously synced the `agentStateVersion` on first iteration. Without that sync, the first `updateAgentState` call was more likely to hit a version-mismatch, adding retry latency (250ms–1000ms backoff) that made the race condition consistently lose.
+
+### Design
+
+Two-layer fix:
+
+#### 1. CLI: ensure agentState arrives before tool_use message (`permissionHandler.ts`)
+
+- Made `updateAgentState` return its `Promise<void>` (was fire-and-forget)
+- In `handlePermissionRequest`, the tool_use message is now released in a `.then()` callback **after** the agentState update is confirmed on the server
+- Fallback: if the agentState update fails, the message is still released to avoid permanently blocking the message queue
+
+#### 2. Webapp: re-run reducer when agentState changes with pending permissions (`sync.ts`)
+
+- After `applySessions` processes an agentState update with pending `requests`, call `applyMessages(sessionId, [])` to trigger a reducer re-run with the latest agentState
+- This is a safety net: even if the race condition still occurs (message arrives first), the reducer will process the pending permission when the agentState update arrives moments later
+
+### Files changed
+
+| File | Change |
+|---|---|
+| `packages/happy-cli/src/api/apiSession.ts` | `updateAgentState` now returns `Promise<void>` (was implicit void) |
+| `packages/happy-cli/src/claude/utils/permissionHandler.ts` | Reordered `handlePermissionRequest`: agentState update first, message release in `.then()` with error fallback |
+| `packages/happy-app/sources/sync/sync.ts` | Trigger `applyMessages(sessionId, [])` when agentState update contains pending permission requests |

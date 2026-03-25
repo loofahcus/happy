@@ -1900,6 +1900,14 @@ class Sync {
                         const firstRequest = agentState.requests[requestIds[0]];
                         const toolName = firstRequest?.tool;
                         voiceHooks.onPermissionRequested(updateData.body.id, requestIds[0], toolName, firstRequest?.arguments);
+
+                        // IMPORTANT: Trigger reducer re-run so the UI picks up pending permissions.
+                        // The reducer only processes agentState when applyMessages() runs.
+                        // Without this, if the tool_use message arrived before this agentState update,
+                        // the reducer already created the tool message without permission info, and
+                        // since Claude blocks waiting for approval (no new messages), the reducer
+                        // would never re-run — causing a deadlock where the user can't approve.
+                        this.applyMessages(updateData.body.id, []);
                     }
 
                     // Re-fetch messages when control returns to mobile (local -> remote mode switch)

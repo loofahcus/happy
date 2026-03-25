@@ -1,3 +1,4 @@
+import { mapToClaudeMode } from "./permissionMode";
 /**
  * Permission Handler for canCallTool integration
  * 
@@ -57,6 +58,7 @@ export class PermissionHandler {
     }
 
     handleModeChange(mode: PermissionMode) {
+        mode = mapToClaudeMode(mode) as PermissionMode;
         this.permissionMode = mode;
     }
 
@@ -167,7 +169,7 @@ export class PermissionHandler {
     /**
      * Handles individual permission requests
      */
-    private async handlePermissionRequest(
+    private handlePermissionRequest(
         id: string,
         toolName: string,
         input: unknown,
@@ -195,12 +197,40 @@ export class PermissionHandler {
                 input
             });
 
-            // Trigger callback to send delayed messages immediately
-            if (this.onPermissionRequestCallback) {
-                this.onPermissionRequestCallback(id);
-            }
-            
-            // Send push notification
+            // IMPORTANT: Update agent state BEFORE releasing the delayed message.
+            // The webapp's reducer only processes agentState when applyMessages() runs.
+            // If the tool_use message arrives before the agentState update, the reducer
+            // creates the tool message without permission info, and since Claude blocks
+            // waiting for approval (no new messages), the reducer never re-runs — deadlock.
+            // By ensuring the agentState is updated first, the webapp is more likely to
+            // have the pending permission when the reducer processes the tool_use message.
+            this.session.client.updateAgentState((currentState) => ({
+                ...currentState,
+                requests: {
+                    ...currentState.requests,
+                    [id]: {
+                        tool: toolName,
+                        arguments: input,
+                        createdAt: Date.now()
+                    }
+                }
+            })).then(() => {
+                // Release delayed message AFTER agentState is confirmed on server
+                if (this.onPermissionRequestCallback) {
+                    this.onPermissionRequestCallback(id);
+                }
+                logger.debug(`Permission request sent for tool call ${id}: ${toolName}`);
+            }).catch(() => {
+                // If agentState update fails, still release the message to avoid
+                // permanently blocking the message queue. The webapp-side fix
+                // (re-running reducer on agentState change) serves as a safety net.
+                if (this.onPermissionRequestCallback) {
+                    this.onPermissionRequestCallback(id);
+                }
+                logger.debug(`Permission request sent (agentState update failed) for tool call ${id}: ${toolName}`);
+            });
+
+            // Send push notification (independent of agentState timing)
             this.session.api.push().sendSessionNotification({
                 kind: 'permission',
                 metadata: this.session.client.getMetadata(),
@@ -212,21 +242,6 @@ export class PermissionHandler {
                     provider: 'claude',
                 }
             });
-
-            // Update agent state
-            this.session.client.updateAgentState((currentState) => ({
-                ...currentState,
-                requests: {
-                    ...currentState.requests,
-                    [id]: {
-                        tool: toolName,
-                        arguments: input,
-                        createdAt: Date.now()
-                    }
-                }
-            }));
-
-            logger.debug(`Permission request sent for tool call ${id}: ${toolName}`);
         });
     }
 
@@ -335,6 +350,43 @@ export class PermissionHandler {
     }
 
     /**
+     * Soft reset: clears tool call tracking and pending requests,
+     * but preserves allowed tools memory ("don't ask again" state).
+     * Used when claudeRemote restarts within the same session.
+     */
+    softReset(): void {
+        this.toolCalls = [];
+        this.responses.clear();
+
+        // Cancel all pending requests
+        for (const [, pending] of this.pendingRequests.entries()) {
+            pending.reject(new Error('Session reset'));
+        }
+        this.pendingRequests.clear();
+
+        // Move all pending requests to completedRequests with canceled status
+        this.session.client.updateAgentState((currentState) => {
+            const pendingRequests = currentState.requests || {};
+            const completedRequests = { ...currentState.completedRequests };
+
+            for (const [id, request] of Object.entries(pendingRequests)) {
+                completedRequests[id] = {
+                    ...request,
+                    completedAt: Date.now(),
+                    status: 'canceled',
+                    reason: 'Session restarted'
+                };
+            }
+
+            return {
+                ...currentState,
+                requests: {},
+                completedRequests
+            };
+        });
+    }
+
+    /**
      * Resets all state for new sessions
      */
     reset(): void {
@@ -412,7 +464,7 @@ export class PermissionHandler {
                             status: message.approved ? 'approved' : 'denied',
                             reason: message.reason,
                             mode: message.mode,
-                            allowTools: message.allowTools
+                            allowedTools: message.allowTools
                         }
                     }
                 };

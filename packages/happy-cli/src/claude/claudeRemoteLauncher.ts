@@ -377,29 +377,28 @@ export async function claudeRemoteLauncher(session: Session): Promise<'switch' |
             mode: EnhancedMode;
         } | null = null;
 
-        // Track session ID to detect when it actually changes
-        // This prevents context loss when mode changes (permission mode, model, etc.)
-        // without starting a new session. Only reset parent chain when session ID
-        // actually changes (e.g., new session started or /clear command used).
+        // Flag for detecting explicit session resets (e.g., /clear command).
+        // Note: --resume creates a new session ID on each spawn, which is NOT a reset.
+        // We must NOT treat --resume ID changes as "new sessions" because that would
+        // incorrectly reset permissions and break the message parent chain.
+        // Only /clear (via onSessionReset) should trigger a full reset.
         // See: https://github.com/anthropics/happy-cli/issues/143
-        let previousSessionId: string | null = session.sessionId;
+        let sessionWasReset = false;
         while (!exitReason) {
-            logger.debug('[remote]: launch');
+            logger.debug(`[remote]: launch`);
             messageBuffer.addMessage('═'.repeat(40), 'status');
 
-            // Only reset parent chain and show "new session" message when session ID actually changes
-            const isNewSession = session.sessionId !== previousSessionId;
-            if (isNewSession) {
+            if (sessionWasReset) {
+                sessionWasReset = false;
                 messageBuffer.addMessage('Starting new Claude session...', 'status');
-                permissionHandler.reset(); // Reset permissions before starting new session
-                sdkToLogConverter.resetParentChain(); // Reset parent chain for new conversation
-                logger.debug(`[remote]: New session detected (previous: ${previousSessionId}, current: ${session.sessionId})`);
+                permissionHandler.reset();
+                sdkToLogConverter.resetParentChain();
+                logger.debug(`[remote]: Session was explicitly reset (e.g., /clear), starting fresh`);
             } else {
                 messageBuffer.addMessage('Continuing Claude session...', 'status');
-                logger.debug(`[remote]: Continuing existing session: ${session.sessionId}`);
+                logger.debug(`[remote]: Continuing session: ${session.sessionId}`);
             }
 
-            previousSessionId = session.sessionId;
             const controller = new AbortController();
             abortController = controller;
             abortFuture = new Future<void>();
@@ -463,8 +462,9 @@ export async function claudeRemoteLauncher(session: Session): Promise<'switch' |
                         session.client.sendSessionEvent({ type: 'message', message });
                     },
                     onSessionReset: () => {
-                        logger.debug('[remote]: Session reset');
+                        logger.debug('[remote]: Session reset (e.g., /clear command)');
                         session.clearSessionId();
+                        sessionWasReset = true;
                     },
                     onReady: () => {
                         session.client.closeClaudeSessionTurn('completed');
@@ -522,7 +522,7 @@ export async function claudeRemoteLauncher(session: Session): Promise<'switch' |
                 abortFuture?.resolve(undefined);
                 abortFuture = null;
                 logger.debug('[remote]: launch done');
-                permissionHandler.reset();
+                permissionHandler.softReset();
                 modeHash = null;
                 mode = null;
             }
