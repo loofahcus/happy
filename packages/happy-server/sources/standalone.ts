@@ -46,8 +46,10 @@ async function openPGlite(dir: string) {
             console.warn(`PGlite crashed (ExitStatus ${e.status}) — data directory may be from an incompatible version.`);
             console.warn(`Wiping ${dir} and retrying with a fresh database...`);
             try { await pg.close(); } catch (_) {}
-            fs.rmSync(dir, { recursive: true, force: true });
-            fs.mkdirSync(dir, { recursive: true });
+            // Delete contents but not the directory itself — it may be a mount point.
+            for (const entry of fs.readdirSync(dir)) {
+                fs.rmSync(path.join(dir, entry), { recursive: true, force: true });
+            }
             const fresh = createPGlite(dir);
             await fresh.exec(MIGRATIONS_TRACKING_DDL);
             return fresh;
