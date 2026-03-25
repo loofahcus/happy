@@ -18,6 +18,7 @@ import { NormalizedMessage, normalizeRawMessage, RawRecord } from './typesRaw';
 import { applySettings, Settings, settingsDefaults, settingsParse, SUPPORTED_SCHEMA_VERSION } from './settings';
 import { Profile, profileParse } from './profile';
 import { loadPendingSettings, savePendingSettings } from './persistence';
+import { loadMessageCache, appendMessageCache, deleteMessageCache, cleanExpiredMessageCaches } from './messageCache';
 import { initializeTracking, tracking } from '@/track';
 import { parseToken } from '@/utils/parseToken';
 import { RevenueCat, LogLevel, PaywallResult } from './revenueCat';
@@ -211,6 +212,7 @@ class Sync {
         this.artifactsSync.invalidate();
         this.feedSync.invalidate();
         log.log('🔄 #init: All syncs invalidated, including artifacts');
+        cleanExpiredMessageCaches();
 
         // Wait for both sessions and machines to load, then mark as ready
         Promise.all([
@@ -285,6 +287,17 @@ class Sync {
         }
 
         this.sessionQueueProcessing.add(sessionId);
+        // Load message cache if starting from seq 0 (fresh session load)
+        const preSeq = this.sessionLastSeq.get(sessionId) ?? 0;
+        if (preSeq === 0) {
+            const cached = loadMessageCache(sessionId);
+            if (cached) {
+                log.log(`💬 fetchMessages: Loaded ${cached.messages.length} cached messages for ${sessionId}, lastSeq=${cached.lastSeq}`);
+                this.enqueueMessages(sessionId, cached.messages);
+                this.sessionLastSeq.set(sessionId, cached.lastSeq);
+            }
+        }
+
         const lock = this.getSessionMessageLock(sessionId);
         void lock.inLock(() => {
             while (true) {
@@ -1591,6 +1604,17 @@ class Sync {
 
     private fetchMessages = async (sessionId: string) => {
         log.log(`💬 fetchMessages starting for session ${sessionId} - acquiring lock`);
+        // Load message cache if starting from seq 0 (fresh session load)
+        const preSeq = this.sessionLastSeq.get(sessionId) ?? 0;
+        if (preSeq === 0) {
+            const cached = loadMessageCache(sessionId);
+            if (cached) {
+                log.log(`💬 fetchMessages: Loaded ${cached.messages.length} cached messages for ${sessionId}, lastSeq=${cached.lastSeq}`);
+                this.enqueueMessages(sessionId, cached.messages);
+                this.sessionLastSeq.set(sessionId, cached.lastSeq);
+            }
+        }
+
         const lock = this.getSessionMessageLock(sessionId);
         await lock.inLock(async () => {
             const encryption = this.encryption.getSessionEncryption(sessionId);
@@ -1602,6 +1626,7 @@ class Sync {
             let afterSeq = this.sessionLastSeq.get(sessionId) ?? 0;
             let hasMore = true;
             let totalNormalized = 0;
+            const allFetchedMessages: NormalizedMessage[] = [];
 
             while (hasMore) {
                 const response = await apiSocket.request(`/v3/sessions/${sessionId}/messages?after_seq=${afterSeq}&limit=100`);
@@ -1634,6 +1659,7 @@ class Sync {
                 if (normalizedMessages.length > 0) {
                     totalNormalized += normalizedMessages.length;
                     this.enqueueMessages(sessionId, normalizedMessages);
+                    allFetchedMessages.push(...normalizedMessages);
                 }
 
                 this.sessionLastSeq.set(sessionId, maxSeq);
@@ -1645,6 +1671,11 @@ class Sync {
                 afterSeq = maxSeq;
             }
 
+            // Write fetched messages to local cache
+            if (allFetchedMessages.length > 0) {
+                const finalSeq = this.sessionLastSeq.get(sessionId) ?? 0;
+                appendMessageCache(sessionId, allFetchedMessages, finalSeq);
+            }
             storage.getState().applyMessagesLoaded(sessionId);
             log.log(`💬 fetchMessages completed for session ${sessionId} - processed ${totalNormalized} messages`);
         });
@@ -1808,6 +1839,7 @@ class Sync {
 
             // Clear any cached git status
             gitStatusSync.clearForSession(sessionId);
+            deleteMessageCache(sessionId);
             this.messagesSync.delete(sessionId);
             this.sendSync.delete(sessionId);
             this.pendingOutbox.delete(sessionId);
