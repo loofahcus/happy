@@ -13,7 +13,7 @@ import { startCaffeinate, stopCaffeinate } from '@/utils/caffeinate';
 import packageJson from '../../package.json';
 import { getEnvironmentInfo } from '@/ui/doctor';
 import { spawnHappyCLI } from '@/utils/spawnHappyCLI';
-import { writeDaemonState, DaemonLocallyPersistedState, readDaemonState, acquireDaemonLock, releaseDaemonLock, readSettings, getActiveProfile, getEnvironmentVariables, validateProfileForAgent, getProfileEnvironmentVariables } from '@/persistence';
+import { writeDaemonState, DaemonLocallyPersistedState, PersistedTrackedSession, readDaemonState, acquireDaemonLock, releaseDaemonLock, readSettings, getActiveProfile, getEnvironmentVariables, validateProfileForAgent, getProfileEnvironmentVariables } from '@/persistence';
 
 import { cleanupDaemonState, isDaemonRunningCurrentlyInstalledHappyVersion, stopDaemon } from './controlClient';
 import { startDaemonControlServer } from './controlServer';
@@ -166,6 +166,13 @@ export async function startDaemon(): Promise<void> {
 
     // Setup state - key by PID
     const pidToTrackedSession = new Map<number, TrackedSession>();
+
+
+    /** Serialize current session map, stripping non-serializable ChildProcess. */
+    const serializeSessions = (): PersistedTrackedSession[] =>
+      Array.from(pidToTrackedSession.values())
+        .filter(s => s.happySessionId !== undefined)
+        .map(({ childProcess: _ignored, ...rest }) => rest);
 
     // Session spawning awaiter system
     const pidToAwaiter = new Map<number, (session: TrackedSession) => void>();
@@ -781,7 +788,8 @@ export async function startDaemon(): Promise<void> {
           startTime: fileState.startTime,
           startedWithCliVersion: packageJson.version,
           lastHeartbeat: new Date().toLocaleString(),
-          daemonLogPath: fileState.daemonLogPath
+          daemonLogPath: fileState.daemonLogPath,
+          sessions: serializeSessions()
         };
         writeDaemonState(updatedState);
         if (process.env.DEBUG) {
@@ -817,6 +825,16 @@ export async function startDaemon(): Promise<void> {
 
       apiMachine.shutdown();
       await stopControlServer();
+      // Write final session snapshot before cleanup (useful for doctor and hot-upgrade)
+      try {
+        const daemonStateBeforeCleanup = await readDaemonState();
+        if (daemonStateBeforeCleanup) {
+          writeDaemonState({ ...daemonStateBeforeCleanup, sessions: serializeSessions() });
+        }
+      } catch (shutdownWriteErr) {
+        logger.debug('[DAEMON RUN] Failed to write sessions snapshot on shutdown:', shutdownWriteErr);
+      }
+
       await cleanupDaemonState();
       await stopCaffeinate();
       await releaseDaemonLock(daemonLockHandle);
