@@ -11,6 +11,22 @@ import { AgentEvent } from "@/sync/typesRaw";
 import { sync } from '@/sync/sync';
 import { Option } from './markdown/MarkdownView';
 
+function formatMessageTime(createdAt: number): string {
+    try {
+        const date = new Date(createdAt);
+        const today = new Date();
+        const isToday = date.getDate() === today.getDate() && date.getMonth() === today.getMonth() && date.getFullYear() === today.getFullYear();
+        const timeStr = date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false });
+        if (isToday) {
+            return timeStr;
+        }
+        const dateStr = date.toLocaleDateString([], { month: 'short', day: 'numeric' });
+        return `${dateStr} ${timeStr}`;
+    } catch {
+        return '';
+    }
+}
+
 
 export const MessageView = (props: {
   message: Message;
@@ -81,6 +97,7 @@ function UserTextBlock(props: {
           <Text style={styles.debugText}>{JSON.stringify(props.message.meta)}</Text>
         )} */}
       </View>
+      <Text style={styles.userTimestamp}>{formatMessageTime(props.message.createdAt)}</Text>
     </View>
   );
 }
@@ -101,6 +118,7 @@ function AgentTextBlock(props: {
   return (
     <View style={styles.agentMessageContainer}>
       <MarkdownView markdown={props.message.text} onOptionPress={handleOptionPress} sessionId={props.sessionId} />
+      {!props.message.isThinking && <Text style={styles.agentTimestamp}>{formatMessageTime(props.message.createdAt)}</Text>}
     </View>
   );
 }
@@ -127,7 +145,14 @@ function AgentEventBlock(props: {
     const formatTime = (timestamp: number): string => {
       try {
         const date = new Date(timestamp * 1000); // Convert from Unix timestamp
-        return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+        const today = new Date();
+        const isToday = date.getDate() === today.getDate() && date.getMonth() === today.getMonth() && date.getFullYear() === today.getFullYear();
+        const timeStr = date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false });
+        if (isToday) {
+            return timeStr;
+        }
+        const dateStr = date.toLocaleDateString([], { month: 'short', day: 'numeric' });
+        return `${dateStr} ${timeStr}`;
       } catch {
         return t('message.unknownTime');
       }
@@ -193,7 +218,7 @@ const styles = StyleSheet.create((theme) => ({
     paddingHorizontal: 12,
     paddingVertical: 4,
     borderRadius: 12,
-    marginBottom: 12,
+    marginBottom: 4,
     maxWidth: '100%',
   },
   agentMessageContainer: {
@@ -217,5 +242,19 @@ const styles = StyleSheet.create((theme) => ({
   debugText: {
     color: theme.colors.agentEventText,
     fontSize: 12,
+  },
+  userTimestamp: {
+    color: theme.colors.agentEventText,
+    fontSize: 11,
+    marginTop: 2,
+    marginBottom: 12,
+    marginRight: 4,
+    textAlign: 'right' as const,
+  },
+  agentTimestamp: {
+    color: theme.colors.agentEventText,
+    fontSize: 11,
+    marginTop: 2,
+    marginLeft: 2,
   },
 }));
