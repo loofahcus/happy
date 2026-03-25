@@ -465,6 +465,39 @@ describe.skipIf(!await isServerHealthy())('Daemon Integration Tests', { timeout:
     }
   });
 
+
+  it('should write active sessions to state file on heartbeat', async () => {
+    // Register a terminal session using the test process's own PID
+    // (guaranteed to be alive for the duration of the test)
+    const mockMetadata: Metadata = {
+      path: '/test/path',
+      host: 'test-host',
+      homeDir: '/test/home',
+      happyHomeDir: '/test/happy-home',
+      happyLibDir: '/test/happy-lib',
+      happyToolsDir: '/test/happy-tools',
+      hostPid: process.pid,
+      startedBy: 'terminal',
+      machineId: 'test-machine-session-write'
+    };
+    await notifyDaemonSessionStarted('session-write-test-001', mockMetadata);
+
+    // Wait for one heartbeat cycle to write sessions
+    // HAPPY_DAEMON_HEARTBEAT_INTERVAL must be set to a low value (e.g. 1000ms) in
+    // the integration test env for this to run quickly
+    const heartbeatMs = parseInt(process.env.HAPPY_DAEMON_HEARTBEAT_INTERVAL || '60000');
+    await new Promise(resolve => setTimeout(resolve, heartbeatMs + 500));
+
+    const state = await readDaemonState();
+    expect(state).not.toBeNull();
+    expect(state!.sessions).toBeDefined();
+
+    const recovered = state!.sessions!.find(s => s.happySessionId === 'session-write-test-001');
+    expect(recovered).toBeDefined();
+    expect(recovered!.pid).toBe(process.pid);
+    expect(recovered!.startedBy).toBe('happy directly - likely by user from terminal');
+  });
+
   // TODO: Add a test to see if a corrupted file will work
   
   // TODO: Test npm uninstall scenario - daemon should gracefully handle when happy-coder is uninstalled
