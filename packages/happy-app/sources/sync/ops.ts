@@ -5,7 +5,7 @@
 
 import { apiSocket } from './apiSocket';
 import { sync } from './sync';
-import type { MachineMetadata } from './storageTypes';
+import type { MachineMetadata, Metadata } from './storageTypes';
 
 // Strict type definitions for all operations
 
@@ -529,6 +529,81 @@ export async function sessionDelete(sessionId: string): Promise<{ success: boole
             message: error instanceof Error ? error.message : 'Unknown error'
         };
     }
+}
+
+/**
+ * Update session metadata with optimistic concurrency control and automatic retry.
+ * Encrypts the metadata, sends via update-metadata socket event, and handles
+ * version-mismatch by merging changes (preserving the intended summary update).
+ */
+export async function sessionUpdateMetadata(
+    sessionId: string,
+    updater: (current: Metadata) => Metadata,
+    expectedVersion: number,
+    maxRetries: number = 3
+): Promise<{ version: number }> {
+    const sessionEncryption = sync.encryption.getSessionEncryption(sessionId);
+    if (!sessionEncryption) {
+        throw new Error(`Session encryption not found for ${sessionId}`);
+    }
+
+    let currentVersion = expectedVersion;
+    let retryCount = 0;
+
+    while (retryCount < maxRetries) {
+        // Get current metadata from store to apply updater
+        const store = (await import("./storage")).storage;
+        const session = store.getState().sessions[sessionId];
+        if (!session?.metadata) {
+            throw new Error("Session metadata not available");
+        }
+
+        const updatedMetadata = updater(session.metadata);
+        const encryptedMetadata = await sessionEncryption.encryptMetadata(updatedMetadata);
+
+        const result = await apiSocket.emitWithAck<{
+            result: "success" | "version-mismatch" | "error";
+            version?: number;
+            metadata?: string;
+        }>("update-metadata", {
+            sid: sessionId,
+            metadata: encryptedMetadata,
+            expectedVersion: currentVersion,
+        });
+
+        if (result.result === "success") {
+            return { version: result.version! };
+        } else if (result.result === "version-mismatch") {
+            currentVersion = result.version!;
+
+            // Decrypt the latest metadata from server to merge
+            const latestMetadata = await sessionEncryption.decryptMetadata(
+                result.version!,
+                result.metadata!
+            );
+            if (!latestMetadata) {
+                throw new Error("Failed to decrypt latest metadata");
+            }
+
+            // Update the store with the latest metadata so next iteration uses it
+            store.getState().applySessions([{
+                ...session,
+                metadata: latestMetadata,
+                metadataVersion: result.version!,
+            }]);
+
+            retryCount++;
+            if (retryCount >= maxRetries) {
+                throw new Error(
+                    `Failed to update after ${maxRetries} retries due to version conflicts`
+                );
+            }
+        } else {
+            throw new Error("Failed to update session metadata");
+        }
+    }
+
+    throw new Error("Unexpected error in sessionUpdateMetadata");
 }
 
 // Export types for external use

@@ -1,5 +1,5 @@
 import React, { useCallback } from 'react';
-import { View, Text, Animated } from 'react-native';
+import { View, Text, Animated, Pressable } from 'react-native';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { Typography } from '@/constants/Typography';
@@ -11,7 +11,7 @@ import { useSession, useIsDataReady } from '@/sync/storage';
 import { getSessionName, useSessionStatus, formatOSPlatform, formatPathRelativeToHome, getSessionAvatarId, getResumeCommand } from '@/utils/sessionUtils';
 import * as Clipboard from 'expo-clipboard';
 import { Modal } from '@/modal';
-import { sessionKill, sessionDelete } from '@/sync/ops';
+import { sessionKill, sessionDelete, sessionUpdateMetadata } from '@/sync/ops';
 import { maybeCleanupWorktree } from '@/hooks/useWorktreeCleanup';
 import { useUnistyles } from 'react-native-unistyles';
 import { layout } from '@/components/layout';
@@ -219,6 +219,28 @@ function SessionInfoContent({ session }: { session: Session }) {
         }
     }, []);
 
+    const handleRenameSession = useCallback(async () => {
+        if (!session.metadata) return;
+        const result = await Modal.prompt(
+            t("sessionInfo.renameSession"),
+            t("sessionInfo.renameSessionPrompt"),
+            {
+                defaultValue: sessionName,
+                placeholder: t("sessionInfo.renameSessionPlaceholder"),
+            }
+        );
+        if (result !== null && result.trim().length > 0) {
+            await sessionUpdateMetadata(
+                session.id,
+                (current) => ({
+                    ...current,
+                    summary: { text: result.trim(), updatedAt: Date.now() },
+                }),
+                session.metadataVersion
+            );
+        }
+    }, [session, sessionName]);
+
     return (
         <>
             <ItemList>
@@ -226,6 +248,7 @@ function SessionInfoContent({ session }: { session: Session }) {
                 <View style={{ maxWidth: layout.maxWidth, alignSelf: 'center', width: '100%' }}>
                     <View style={{ alignItems: 'center', paddingVertical: 24, backgroundColor: theme.colors.surface, marginBottom: 8, borderRadius: 12, marginHorizontal: 16, marginTop: 16 }}>
                         <Avatar id={getSessionAvatarId(session)} size={80} monochrome={!sessionStatus.isConnected} flavor={session.metadata?.flavor} />
+                        <Pressable onPress={handleRenameSession}>
                         <Text style={{
                             fontSize: 20,
                             fontWeight: '600',
@@ -236,6 +259,7 @@ function SessionInfoContent({ session }: { session: Session }) {
                         }}>
                             {sessionName}
                         </Text>
+                        </Pressable>
                         <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 8 }}>
                             <StatusDot color={sessionStatus.statusDotColor} isPulsing={sessionStatus.isPulsing} size={10} />
                             <Text style={{
@@ -339,6 +363,14 @@ function SessionInfoContent({ session }: { session: Session }) {
 
                 {/* Quick Actions */}
                 <ItemGroup title={t('sessionInfo.quickActions')}>
+                    {session.metadata && (
+                        <Item
+                            title={t("sessionInfo.renameSession")}
+                            subtitle={t("sessionInfo.renameSessionSubtitle")}
+                            icon={<Ionicons name="pencil-outline" size={29} color="#007AFF" />}
+                            onPress={handleRenameSession}
+                        />
+                    )}
                     {session.metadata?.machineId && (
                         <Item
                             title={t('sessionInfo.viewMachine')}

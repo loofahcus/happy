@@ -21,6 +21,9 @@ import { UpdateBanner } from './UpdateBanner';
 import { layout } from './layout';
 import { useNavigateToSession } from '@/hooks/useNavigateToSession';
 import { SessionActionsAnchor, SessionActionsPopover } from './SessionActionsPopover';
+import { sessionUpdateMetadata } from '@/sync/ops';
+import { Modal } from '@/modal';
+import { t } from '@/text';
 
 const stylesheet = StyleSheet.create((theme) => ({
     container: {
@@ -315,6 +318,28 @@ const SessionItem = React.memo(({ session, selected, isFirst, isLast, isSingle }
     const navigateToSession = useNavigateToSession();
     const [actionsAnchor, setActionsAnchor] = React.useState<SessionActionsAnchor | null>(null);
 
+
+    const handleRename = React.useCallback(async () => {
+        if (!session.metadata) return;
+        const result = await Modal.prompt(
+            t("sessionInfo.renameSession"),
+            t("sessionInfo.renameSessionPrompt"),
+            {
+                defaultValue: sessionName,
+                placeholder: t("sessionInfo.renameSessionPlaceholder"),
+            }
+        );
+        if (result !== null && result.trim().length > 0) {
+            await sessionUpdateMetadata(
+                session.id,
+                (current) => ({
+                    ...current,
+                    summary: { text: result.trim(), updatedAt: Date.now() },
+                }),
+                session.metadataVersion
+            );
+        }
+    }, [session, sessionName]);
     const avatarId = React.useMemo(() => {
         return getSessionAvatarId(session);
     }, [session]);
@@ -353,6 +378,7 @@ const SessionItem = React.memo(({ session, selected, isFirst, isLast, isSingle }
                         isLast ? styles.sessionItemLast : {}
             ]}
             onPress={handlePress}
+            onLongPress={handleRename}
             {...webMenuProps}
         >
             <View style={styles.avatarContainer}>
