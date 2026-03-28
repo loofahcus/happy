@@ -306,6 +306,7 @@ export function query(config: {
     if (strictMcpConfig) args.push('--strict-mcp-config')
     if (permissionMode) args.push('--permission-mode', permissionMode)
     if (settingsPath) args.push('--settings', settingsPath)
+    if (config.options?.noSessionPersistence) args.push('--no-session-persistence')
 
     if (fallbackModel) {
         if (model && fallbackModel === model) {
