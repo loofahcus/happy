@@ -217,6 +217,8 @@ export const pl: TranslationStructure = {
         gitTracking: 'Śledzenie Git',
         gitTrackingEnabled: 'Śledzenie Git w tle włączone dla nowych sesji',
         gitTrackingDisabled: 'Śledzenie Git w tle wyłączone dla nowych sesji',
+        verbose: 'Tryb szczegółowy',
+        verboseSubtitle: 'Pokaż treść myślenia modelu w wiadomościach czatu',
     },
 
     errors: {

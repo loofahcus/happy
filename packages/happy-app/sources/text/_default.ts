@@ -204,6 +204,8 @@ export const en = {
         gitTracking: 'Git Tracking',
         gitTrackingEnabled: 'Background git tracking enabled for new sessions',
         gitTrackingDisabled: 'Background git tracking disabled for new sessions',
+        verbose: 'Verbose Mode',
+        verboseSubtitle: 'Show model thinking content in chat messages',
     },
 
     errors: {

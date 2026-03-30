@@ -187,6 +187,8 @@ export const ru: TranslationStructure = {
         gitTracking: 'Git-отслеживание',
         gitTrackingEnabled: 'Фоновое отслеживание git включено для новых сессий',
         gitTrackingDisabled: 'Фоновое отслеживание git отключено для новых сессий',
+        verbose: 'Подробный режим',
+        verboseSubtitle: 'Показывать содержимое размышлений модели в сообщениях чата',
     },
 
     errors: {

@@ -206,6 +206,8 @@ export const es: TranslationStructure = {
         gitTracking: 'Seguimiento Git',
         gitTrackingEnabled: 'Seguimiento Git en segundo plano habilitado para nuevas sesiones',
         gitTrackingDisabled: 'Seguimiento Git en segundo plano deshabilitado para nuevas sesiones',
+        verbose: 'Modo detallado',
+        verboseSubtitle: 'Mostrar el contenido de razonamiento del modelo en los mensajes del chat',
     },
 
     errors: {

@@ -207,6 +207,8 @@ export const ja: TranslationStructure = {
         gitTracking: 'Git トラッキング',
         gitTrackingEnabled: '新しいセッションでバックグラウンドGitトラッキングが有効',
         gitTrackingDisabled: '新しいセッションでバックグラウンドGitトラッキングが無効',
+        verbose: '詳細モード',
+        verboseSubtitle: 'チャットメッセージにモデルの思考内容を表示する',
     },
 
     errors: {

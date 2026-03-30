@@ -206,6 +206,8 @@ export const ca: TranslationStructure = {
         gitTracking: 'Seguiment Git',
         gitTrackingEnabled: 'Seguiment Git en segon pla habilitat per a noves sessions',
         gitTrackingDisabled: 'Seguiment Git en segon pla deshabilitat per a noves sessions',
+        verbose: 'Mode detallat',
+        verboseSubtitle: "Mostra el contingut de raonament del model als missatges del xat",
     },
 
     errors: {

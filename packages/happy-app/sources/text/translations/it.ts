@@ -204,6 +204,8 @@ export const it: TranslationStructure = {
         gitTracking: 'Tracciamento Git',
         gitTrackingEnabled: 'Tracciamento Git in background abilitato per nuove sessioni',
         gitTrackingDisabled: 'Tracciamento Git in background disabilitato per nuove sessioni',
+        verbose: 'Modalità dettagliata',
+        verboseSubtitle: 'Mostrare il contenuto del ragionamento del modello nei messaggi della chat',
     },
 
     errors: {

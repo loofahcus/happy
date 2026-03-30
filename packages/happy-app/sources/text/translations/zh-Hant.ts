@@ -206,6 +206,8 @@ export const zhHant: TranslationStructure = {
         gitTracking: 'Git 追蹤',
         gitTrackingEnabled: '新工作階段預設啟用背景 Git 追蹤',
         gitTrackingDisabled: '新工作階段預設停用背景 Git 追蹤',
+        verbose: '詳細模式',
+        verboseSubtitle: '在聊天訊息中顯示模型思考內容',
     },
 
     errors: {

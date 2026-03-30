@@ -207,6 +207,8 @@ export const zhHans: TranslationStructure = {
         gitTracking: 'Git 跟踪',
         gitTrackingEnabled: '新会话默认启用后台 Git 跟踪',
         gitTrackingDisabled: '新会话默认禁用后台 Git 跟踪',
+        verbose: '详细模式',
+        verboseSubtitle: '在聊天消息中显示模型思考内容',
     },
 
     errors: {

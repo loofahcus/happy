@@ -15,6 +15,7 @@ export default function FeaturesSettingsScreen() {
     const [hideInactiveSessions, setHideInactiveSessions] = useSettingMutable('hideInactiveSessions');
     const [expResumeSession, setExpResumeSession] = useSettingMutable('expResumeSession');
     const [enableGitTracking, setEnableGitTracking] = useSettingMutable('enableGitTracking');
+    const [verbose, setVerbose] = useSettingMutable('verbose');
 
     return (
         <ItemList style={{ paddingTop: 0 }}>
@@ -79,6 +80,18 @@ export default function FeaturesSettingsScreen() {
                         <Switch
                             value={enableGitTracking}
                             onValueChange={setEnableGitTracking}
+                        />
+                    }
+                    showChevron={false}
+                />
+                <Item
+                    title={t('settingsFeatures.verbose')}
+                    subtitle={t('settingsFeatures.verboseSubtitle')}
+                    icon={<Ionicons name="chatbox-ellipses-outline" size={29} color="#AF52DE" />}
+                    rightElement={
+                        <Switch
+                            value={verbose}
+                            onValueChange={setVerbose}
                         />
                     }
                     showChevron={false}
