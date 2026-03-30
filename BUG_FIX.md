@@ -206,3 +206,75 @@ Changed `registerCommonHandlers` from `process.cwd()` to `homedir()`, since the 
 |---|---|
 | `packages/happy-app/sources/utils/worktree.ts` | Parse stderr for actual "not a git repository" message; pass through real errors otherwise |
 | `packages/happy-cli/src/api/apiMachine.ts` | Import `homedir` from `os`; replace `process.cwd()` with `homedir()` in `registerCommonHandlers` call |
+
+---
+
+## 6. Context Loss After Remote Abort
+
+### Problem
+
+After clicking "Abort" on the remote client while Claude is idle, sending a new message causes Claude to treat the conversation as a fresh session — losing all prior context. Claude responds: *"No, this is a fresh session\!"*
+
+### Root cause
+
+A design gap that existed since the abort mechanism was introduced (not a regression from any specific commit).
+
+When abort fires while Claude is idle:
+
+1. `abortController.abort()` → `waitForMessagesAndGetAsString` returns `null` → `nextMessage()` returns `null`
+2. `claudeRemote` calls `messages.end()` → stdin closes → Claude process exits
+3. While loop restarts → new Claude process spawned with `--resume SESSION_ID`
+4. The user's real question is sent as the **first stdin message** (non-empty)
+5. `isResumeWithoutPrompt = \!\!startFrom && \!initial.message.trim()` evaluates to `false`
+6. No `DRAIN_MESSAGE` is sent → Claude Code does **not** load conversation history into its context window
+7. Claude treats it as a fresh session
+
+The `DRAIN_MESSAGE` mechanism (`5a8984db`) was designed for the "resume without initial prompt" UI flow and was never connected to the abort-restart path.
+
+### Design
+
+After an abort-while-idle, trigger a drain turn at the start of the next `claudeRemote` call by returning an empty initial message from `nextMessage()`. This reuses the existing `DRAIN_MESSAGE` flow to force Claude Code to load session history before the real user message is sent.
+
+#### State tracking
+
+Three variables persist across while-loop iterations:
+
+| Variable | Purpose |
+|---|---|
+| `lastMode` | Captures mode at last processed message, used as the mode for the synthetic drain message |
+| `drainAfterAbort` | Flag set in `finally` block when abort-while-idle is detected |
+| `wasThinkingOnAbort` | Captured in `doAbort()` to distinguish idle abort from processing abort |
+
+#### Drain trigger condition
+
+In the `finally` block, `wasAbortedIdle` is true only when:
+- `abortController.signal.aborted` (abort actually fired)
+- `\!wasThinkingOnAbort` (Claude was idle, not processing)
+- `session.sessionId \!== null` (valid session exists)
+- `lastMode \!== null` (at least one message was processed)
+
+#### Session validity guard
+
+Before the drain, `claudeCheckSession()` verifies the session file is still valid. If corrupted/missing, `willDrain` is set to `false` and normal flow resumes (no empty message sent to a fresh session).
+
+#### History replay suppression
+
+`onResumeHistory` is set to `undefined` when `willDrain = true` to prevent duplicate messages in the client UI (the client already has the history from before the abort).
+
+### Flow after fix
+
+```
+User aborts (idle) → drainAfterAbort = true
+While loop restarts → willDrain = true
+claudeRemote starts → nextMessage() returns { message: '', mode: lastMode }
+→ isResumeWithoutPrompt = true
+→ DRAIN_MESSAGE sent to Claude → Claude loads session history → responds "PONG"
+→ nextMessage() called again → returns real user message from queue
+→ Claude responds with full context ✓
+```
+
+### Files changed
+
+| File | Change |
+|---|---|
+| `packages/happy-cli/src/claude/claudeRemoteLauncher.ts` | Added `lastMode`, `drainAfterAbort`, `wasThinkingOnAbort` state; drain injection in `nextMessage`; session validity guard; conditional `onResumeHistory` suppression |

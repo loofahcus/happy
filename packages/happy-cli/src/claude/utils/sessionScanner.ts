@@ -222,7 +222,7 @@ function messageKey(message: RawJSONLines): string {
  * Read and parse session log file
  * Returns only valid conversation messages, silently skipping internal events
  */
-async function readSessionLog(projectDir: string, sessionId: string): Promise<RawJSONLines[]> {
+export async function readSessionLog(projectDir: string, sessionId: string): Promise<RawJSONLines[]> {
     const expectedSessionFile = join(projectDir, `${sessionId}.jsonl`);
     logger.debug(`[SESSION_SCANNER] Reading session file: ${expectedSessionFile}`);
     let file: string;
@@ -246,14 +246,10 @@ async function readSessionLog(projectDir: string, sessionId: string): Promise<Ra
                 && message.message.content.startsWith('[SYSTEM: Internal keepalive ping')) {
                 continue;
             }
-            if (message.type === 'user' && typeof message.message?.content === 'string'
-                && message.message.content === 'This is a drain message, just ignore it and respond with a simple `OK`') {
-                continue;
-            }
             if (message.type === 'assistant' && Array.isArray(message.message?.content)
                 && message.message.content.length === 1 && message.message.content[0]?.type === 'text') {
                 const pongText = message.message.content[0]?.text ?? '';
-                if (pongText.trim() === 'PONG' || pongText.trim() === 'OK') {
+                if (pongText.trim() === 'PONG') {
                     continue;
                 }
                 if (/^PONG\s*\n/.test(pongText)) {

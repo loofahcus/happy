@@ -8,7 +8,7 @@ This document records each feature we re-implement on top of `upstream/main`, in
 
 ### Problem
 
-Claude Code SDK uses `stream-json` for stdin. When a session is resumed without a prompt, or when background tasks complete, stdin must be unblocked by pushing a synthetic "drain" message. Claude responds with "OK" to this drain message. **That "OK" must never leak to the mobile app.**
+Claude Code SDK uses `stream-json` for stdin. When a session is resumed without a prompt, or when background tasks complete, stdin must be unblocked by pushing a synthetic "drain" message. Claude responds with "PONG" to this drain message. **That "PONG" must never leak to the mobile app.**
 
 Two scenarios require draining:
 
@@ -63,7 +63,7 @@ postReadyDrainStarted       — one-shot flag preventing infinite post-ready dra
 
 #### Key invariant
 
-`suppressDrainMessages` is set to `true` **before** the drain message is pushed and only set to `false` **after** the drain result is fully processed. Since the `for await` loop processes messages sequentially, there is no window where an "OK" can slip through.
+`suppressDrainMessages` is set to `true` **before** the drain message is pushed and only set to `false` **after** the drain result is fully processed. Since the `for await` loop processes messages sequentially, there is no window where a "PONG" can slip through.
 
 ### Files changed
 
@@ -77,10 +77,10 @@ postReadyDrainStarted       — one-shot flag preventing infinite post-ready dra
 | # | Scenario | Assertion |
 |---|---|---|
 | 1 | Normal turn (no background tasks) | All messages visible, assistant text present |
-| 2 | Resume without prompt | "OK" NOT in visible assistants, `onReady` called |
-| 3 | Drain + task_notification → chain drain | No "OK" visible, `onReady` called once |
+| 2 | Resume without prompt | "PONG" NOT in visible assistants, `onReady` called |
+| 3 | Drain + task_notification → chain drain | No "PONG" visible, `onReady` called once |
 | 4 | task_notification during normal user turn | Assistant response IS visible (not suppressed) |
-| 5 | Post-ready drain (pending > 0 after normal turn) | Real response visible, drain "OK" not visible |
+| 5 | Post-ready drain (pending > 0 after normal turn) | Real response visible, drain "PONG" not visible |
 | 6 | All message types suppressed during drain | Zero assistant messages visible |
 
 ### Known limitation
@@ -446,14 +446,14 @@ Only `happy-app` needs redeployment. The thinking content pipeline (CLI → wire
 
 ### Problem
 
-When a user resumes a session directly on the remote client (without sending an initial message), historical messages were not displayed. This occurred because the drain turn suppresses all `onMessage` calls to prevent "OK" from leaking to the mobile app. As a result, users would see an empty conversation history when resuming.
+When a user resumes a session directly on the remote client (without sending an initial message), historical messages were not displayed. This occurred because the drain turn suppresses all `onMessage` calls to prevent "PONG" from leaking to the mobile app. As a result, users would see an empty conversation history when resuming.
 
 ### Root cause
 
 The `isResumeWithoutPrompt` path (when `startFrom` is set and `initial.message` is empty) triggers a drain turn immediately:
 
 1. `isDrainTurn = true` → `suppressDrainMessages = true`
-2. DRAIN_MESSAGE sent to Claude → Claude responds "OK"
+2. DRAIN_MESSAGE sent to Claude → Claude responds "PONG"
 3. All messages during drain are suppressed by `suppressDrainMessages` gate
 4. Historical messages are never sent to the client
 
@@ -477,7 +477,7 @@ claudeRemote detects isResumeWithoutPrompt
     → closes turn to signal end of history
   → then sets suppressDrainMessages = true
   → pushes DRAIN_MESSAGE (suppressed, not sent to client)
-  → Claude responds "OK" (also suppressed)
+  → Claude responds "PONG" (also suppressed)
   → suppressDrainMessages = false after drain completes
   → normal conversation resumes with full history context
 ```

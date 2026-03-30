@@ -4,6 +4,7 @@ import { MessageBuffer } from "@/ui/ink/messageBuffer";
 import { RemoteModeDisplay } from "@/ui/ink/RemoteModeDisplay";
 import React from "react";
 import { claudeRemote } from "./claudeRemote";
+import { claudeCheckSession } from "./utils/claudeCheckSession";
 import { PermissionHandler } from "./utils/permissionHandler";
 import { Future } from "@/utils/future";
 import { restoreStdin } from "@/utils/restoreStdin";
@@ -17,6 +18,8 @@ import { RawJSONLines } from "@/claude/types";
 import { OutgoingMessageQueue } from "./utils/OutgoingMessageQueue";
 import { getToolName } from "./utils/getToolName";
 import { getAskUserQuestionToolCallIds } from "./utils/questionNotification";
+import { readSessionLog } from "./utils/sessionScanner";
+import { getProjectPath } from "./utils/path";
 
 interface PermissionsField {
     date: number;
@@ -131,6 +134,9 @@ export async function claudeRemoteLauncher(session: Session): Promise<'switch' |
     let exitReason: 'switch' | 'exit' | null = null;
     let abortController: AbortController | null = null;
     let abortFuture: Future<void> | null = null;
+    let lastMode: EnhancedMode | null = null;    // mode at last processed message
+    let drainAfterAbort = false;                  // trigger drain on next iteration
+    let wasThinkingOnAbort = false;               // was Claude processing when aborted?
 
     async function abort() {
         if (abortController && !abortController.signal.aborted) {
@@ -141,6 +147,7 @@ export async function claudeRemoteLauncher(session: Session): Promise<'switch' |
 
     async function doAbort() {
         logger.debug('[remote]: doAbort');
+        wasThinkingOnAbort = session.thinking;
         await abort();
     }
 
@@ -161,7 +168,7 @@ export async function claudeRemoteLauncher(session: Session): Promise<'switch' |
     const permissionHandler = new PermissionHandler(session);
 
     // Create outgoing message queue
-    const messageQueue = new OutgoingMessageQueue(
+    let messageQueue = new OutgoingMessageQueue(
         (logMessage) => session.client.sendClaudeSessionMessage(logMessage)
     );
 
@@ -388,11 +395,30 @@ export async function claudeRemoteLauncher(session: Session): Promise<'switch' |
             logger.debug(`[remote]: launch`);
             messageBuffer.addMessage('═'.repeat(40), 'status');
 
+            // Recreate outgoing message queue each iteration to avoid stale state after destroy()
+            messageQueue = new OutgoingMessageQueue(
+                (logMessage) => session.client.sendClaudeSessionMessage(logMessage)
+            );
+
+            let willDrain = drainAfterAbort;
+            drainAfterAbort = false;
+            let drainConsumed = false;
+
+            if (willDrain) {
+                logger.debug('[remote]: Starting drain-first iteration for session ' + session.sessionId);
+            }
+            // Verify session is still valid for drain
+            if (willDrain && (!session.sessionId || !claudeCheckSession(session.sessionId, session.path))) {
+                logger.debug('[remote]: Session invalid for drain, skipping drain');
+                willDrain = false;
+            }
+
             if (sessionWasReset) {
                 sessionWasReset = false;
                 messageBuffer.addMessage('Starting new Claude session...', 'status');
                 permissionHandler.reset();
                 sdkToLogConverter.resetParentChain();
+                session.client.resetClaudeSessionProtocolState();
                 logger.debug(`[remote]: Session was explicitly reset (e.g., /clear), starting fresh`);
             } else {
                 messageBuffer.addMessage('Continuing Claude session...', 'status');
@@ -418,8 +444,15 @@ export async function claudeRemoteLauncher(session: Session): Promise<'switch' |
                         return permissionHandler.isAborted(toolCallId);
                     },
                     nextMessage: async () => {
+                        // Drain-first after abort: return empty string to trigger history load
+                        if (willDrain && !drainConsumed) {
+                            drainConsumed = true;
+                            return { message: '', mode: lastMode! };
+                        }
+
                         if (pending) {
                             let p = pending;
+                            lastMode = p.mode;
                             pending = null;
                             permissionHandler.handleModeChange(p.mode.permissionMode);
                             if (p.mode.model) { session.client.setLocalModelCode(p.mode.model); }
@@ -437,6 +470,7 @@ export async function claudeRemoteLauncher(session: Session): Promise<'switch' |
                             }
                             modeHash = msg.hash;
                             mode = msg.mode;
+                            lastMode = msg.mode;
                             permissionHandler.handleModeChange(mode.permissionMode);
                             if (mode.model) { session.client.setLocalModelCode(mode.model); }
                             return {
@@ -457,6 +491,17 @@ export async function claudeRemoteLauncher(session: Session): Promise<'switch' |
                     claudeEnvVars: session.claudeEnvVars,
                     claudeArgs: session.claudeArgs,
                     onMessage,
+                    onResumeHistory: willDrain ? undefined : async (resumeSessionId: string) => {
+                        const projectDir = getProjectPath(session.path);
+                        const historyMessages = await readSessionLog(projectDir, resumeSessionId);
+                        logger.debug(`[remote]: Sending ${historyMessages.length} historical messages for resumed session ${resumeSessionId}`);
+                        for (const msg of historyMessages) {
+                            session.client.sendClaudeSessionMessage(msg);
+                        }
+                        if (historyMessages.length > 0) {
+                            session.client.closeClaudeSessionTurn('completed');
+                        }
+                    },
                     onCompletionEvent: (message: string) => {
                         logger.debug(`[remote]: Completion event: ${message}`);
                         session.client.sendSessionEvent({ type: 'message', message });
@@ -483,6 +528,12 @@ export async function claudeRemoteLauncher(session: Session): Promise<'switch' |
                     signal: abortController.signal,
                 });
                 
+
+                // Re-queue unconsumed message if claudeRemote exited before processing it
+                if (remoteResult?.unconsumedMessage) {
+                    logger.debug(`[remote]: Re-queuing unconsumed message (claudeRemote exited before SDK processed it)`);
+                    session.queue.unshift(remoteResult.unconsumedMessage.message, remoteResult.unconsumedMessage.mode);
+                }
                 // Consume one-time Claude flags after spawn
                 session.consumeOneTimeFlags();
                 
@@ -500,6 +551,12 @@ export async function claudeRemoteLauncher(session: Session): Promise<'switch' |
             } finally {
 
                 logger.debug('[remote]: launch finally');
+
+                // Capture abort state before reset
+                const wasAbortedIdle = (abortController?.signal.aborted ?? false)
+                    && !wasThinkingOnAbort
+                    && session.sessionId !== null
+                    && lastMode !== null;
 
                 // Terminate all ongoing tool calls
                 for (let [toolCallId, { parentToolCallId }] of ongoingToolCalls) {
@@ -525,6 +582,12 @@ export async function claudeRemoteLauncher(session: Session): Promise<'switch' |
                 permissionHandler.softReset();
                 modeHash = null;
                 mode = null;
+
+                // Schedule drain for next iteration if abort was idle
+                if (!exitReason && wasAbortedIdle) {
+                    drainAfterAbort = true;
+                }
+                wasThinkingOnAbort = false;
             }
         }
     } finally {

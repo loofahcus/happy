@@ -40,9 +40,13 @@ export class Query implements AsyncIterableIterator<SDKMessage> {
         private childStdin: Writable | null,
         private childStdout: NodeJS.ReadableStream,
         private processExitPromise: Promise<void>,
-        canCallTool?: CanCallToolCallback
+        canCallTool?: CanCallToolCallback,
+        abortSignal?: AbortSignal
     ) {
         this.canCallTool = canCallTool
+        if (abortSignal) {
+            abortSignal.addEventListener('abort', () => this.cleanupControllers(), { once: true })
+        }
         this.readMessages()
         this.sdkMessages = this.readSdkMessages()
     }
@@ -193,15 +197,19 @@ export class Query implements AsyncIterableIterator<SDKMessage> {
             }
             this.childStdin.write(JSON.stringify(controlResponse) + '\n')
         } catch (error) {
-            const controlErrorResponse: CanUseToolControlResponse = {
-                type: 'control_response',
-                response: {
-                    subtype: 'error',
-                    request_id: request.request_id,
-                    error: error instanceof Error ? error.message : String(error)
+            try {
+                const controlErrorResponse: CanUseToolControlResponse = {
+                    type: 'control_response',
+                    response: {
+                        subtype: 'error',
+                        request_id: request.request_id,
+                        error: error instanceof Error ? error.message : String(error)
+                    }
                 }
+                this.childStdin!.write(JSON.stringify(controlErrorResponse) + '\n')
+            } catch (_writeError) {
+                logDebug('Failed to send error response to child process (likely already dead)')
             }
-            this.childStdin.write(JSON.stringify(controlErrorResponse) + '\n')
         } finally {
             this.cancelControllers.delete(request.request_id)
         }
@@ -387,14 +395,13 @@ export function query(config: {
             }
             if (code !== 0) {
                 query.setError(new Error(`Claude Code process exited with code ${code}`))
-            } else {
-                resolve()
             }
+            resolve()
         })
     })
 
     // Create query instance
-    const query = new Query(childStdin, child.stdout, processExitPromise, canCallTool)
+    const query = new Query(childStdin, child.stdout, processExitPromise, canCallTool, config.options?.abort)
 
     // Handle process errors
     child.on('error', (error) => {

@@ -13,6 +13,10 @@ import { systemPrompt } from "./utils/systemPrompt";
 import { PermissionResult } from "./sdk/types";
 import type { JsRuntime } from "./runClaude";
 
+export type ClaudeRemoteResult = {
+    unconsumedMessage?: { message: string; mode: EnhancedMode };
+};
+
 export async function claudeRemote(opts: {
 
     // Fixed parameters
@@ -41,8 +45,9 @@ export async function claudeRemote(opts: {
     onThinkingChange?: (thinking: boolean) => void,
     onMessage: (message: SDKMessage) => void,
     onCompletionEvent?: (message: string) => void,
+    onResumeHistory?: (resumeSessionId: string) => Promise<void>,
     onSessionReset?: () => void
-}) {
+}): Promise<ClaudeRemoteResult> {
 
     // Check if session is valid
     let startFrom = opts.sessionId;
@@ -83,10 +88,18 @@ export async function claudeRemote(opts: {
         });
     }
 
+    // Send historical messages to client when resuming a session (first spawn only)
+    // Must happen BEFORE nextMessage() so the webapp shows history immediately,
+    // not after the user sends their first message.
+    const isFirstResume = opts.claudeArgs?.includes('--resume') ?? false;
+    if (isFirstResume && startFrom && opts.onResumeHistory) {
+        await opts.onResumeHistory(startFrom);
+    }
+
     // Get initial message
     const initial = await opts.nextMessage();
     if (!initial) { // No initial message - exit
-        return;
+        return {};
     }
 
     // Handle special commands
@@ -100,7 +113,7 @@ export async function claudeRemote(opts: {
         if (opts.onSessionReset) {
             opts.onSessionReset();
         }
-        return;
+        return {};
     }
 
     // Handle /compact command
@@ -168,18 +181,14 @@ export async function claudeRemote(opts: {
     let outstandingDrainCount = 0;  // Track drain messages pushed to SDK queue but not yet consumed
     let bgCountAtLastPush = 0;  // pendingBackgroundTaskCount at the time the last user message was pushed
 
-    const DRAIN_MESSAGE = "This is a drain message, just ignore it and respond with a simple `OK`";
+    let pendingUserMessage: { message: string; mode: EnhancedMode } | null = null; // Track consumed but unprocessed user messages
+    const DRAIN_MESSAGE = "[SYSTEM: Internal keepalive ping. Reply with exactly one word: PONG]";
 
     // Push initial message - always push something so stream-json stdin is unblocked.
     // For resume without prompt, send a drain message and suppress it from webapp.
     let messages = new PushableAsyncIterable<SDKUserMessage>();
     const isResumeWithoutPrompt = !!startFrom && !initial.message.trim();
     if (isResumeWithoutPrompt) { isDrainTurn = true; outstandingDrainCount++; }
-    // Send historical messages to client when resuming a session (first spawn only)
-    const isFirstResume = opts.claudeArgs?.includes('--resume') ?? false;
-    if (isFirstResume && startFrom && opts.onResumeHistory) {
-        await opts.onResumeHistory(startFrom);
-    }
     messages.push({
         type: 'user',
         message: {
@@ -264,6 +273,7 @@ export async function claudeRemote(opts: {
             // Handle result messages - with drain mechanism for background task notifications
             if (message.type === 'result') {
                 updateThinking(false);
+
                 if (isCompactCommand) {
                     logger.debug('[claudeRemote] Compaction completed');
                     if (opts.onCompletionEvent) { opts.onCompletionEvent('Compaction completed'); }
@@ -311,9 +321,10 @@ export async function claudeRemote(opts: {
                 const next = await opts.nextMessage();
                 if (!next) {
                     messages.end();
-                    return;
+                    return {};
                 }
                 mode = next.mode;
+                pendingUserMessage = { message: next.message, mode: next.mode };
                 messages.push({ type: 'user', message: { role: 'user', content: next.message } });
                 bgCountAtLastPush = pendingBackgroundTaskCount;
             }
@@ -325,7 +336,7 @@ export async function claudeRemote(opts: {
                     for (let c of msg.message.content) {
                         if (c.type === 'tool_result' && c.tool_use_id && opts.isAborted(c.tool_use_id)) {
                             logger.debug('[claudeRemote] Tool aborted, exiting claudeRemote');
-                            return;
+                            return { unconsumedMessage: pendingUserMessage ?? undefined };
                         }
                     }
                 }
@@ -341,4 +352,5 @@ export async function claudeRemote(opts: {
     } finally {
         updateThinking(false);
     }
+    return { unconsumedMessage: pendingUserMessage ?? undefined };
 }

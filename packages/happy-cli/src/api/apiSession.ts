@@ -403,6 +403,15 @@ export class ApiSessionClient extends EventEmitter {
         }
     }
 
+    resetClaudeSessionProtocolState() {
+        this.claudeSessionProtocolState = {
+            localModelCode: this.claudeSessionProtocolState.localModelCode,
+            currentTurnId: null,
+        };
+        logger.debug("[SOCKET] Claude session protocol state reset");
+    }
+
+
     sendCodexMessage(body: any) {
         let content = {
             role: 'agent',
