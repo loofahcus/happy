@@ -4,6 +4,7 @@
  */
 
 import { io, Socket } from 'socket.io-client';
+import { homedir } from 'os';
 import { logger } from '@/ui/logger';
 import { configuration } from '@/configuration';
 import { MachineMetadata, DaemonState, Machine, Update, UpdateMachineBody } from './types';
@@ -98,7 +99,7 @@ export class ApiMachineClient {
             logger: (msg, data) => logger.debug(msg, data)
         });
 
-        registerCommonHandlers(this.rpcHandlerManager, process.cwd());
+        registerCommonHandlers(this.rpcHandlerManager, homedir());
     }
 
     setRPCHandlers({

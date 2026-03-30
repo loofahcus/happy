@@ -172,3 +172,37 @@ Two-layer fix:
 | `packages/happy-cli/src/api/apiSession.ts` | `updateAgentState` now returns `Promise<void>` (was implicit void) |
 | `packages/happy-cli/src/claude/utils/permissionHandler.ts` | Reordered `handlePermissionRequest`: agentState update first, message release in `.then()` with error fallback |
 | `packages/happy-app/sources/sync/sync.ts` | Trigger `applyMessages(sessionId, [])` when agentState update contains pending permission requests |
+
+---
+
+## 5. False "Not a Git Repository" Error When Creating Worktree Sessions
+
+### Problem
+
+Creating a new worktree session sometimes displays "Not a Git repository" even when the project is inside a valid Git repo.
+
+### Root cause
+
+Two issues:
+
+| Bug | Root cause | Symptom |
+|---|---|---|
+| **Overly broad error mapping** | `createWorktree` treated any `git rev-parse --git-dir` failure as "not a git repo", masking real errors (RPC failures, path validation rejections, timeouts) | User sees "Not a Git repository" when the actual problem is something else entirely |
+| **Wrong base path for bash validation** | `registerCommonHandlers` in the daemon used `process.cwd()` for path validation, but the daemon's cwd is arbitrary and may not be a parent of the user's project directory | Bash commands rejected by path validation, causing the git check to fail |
+
+### Design
+
+#### 1. Precise error detection (`worktree.ts`)
+
+Parse `gitCheck.stderr` to determine if Git actually reported "not a git repository". Only return that specific error message when it matches; otherwise, pass through the real error from stderr.
+
+#### 2. Use `homedir()` for path validation (`apiMachine.ts`)
+
+Changed `registerCommonHandlers` from `process.cwd()` to `homedir()`, since the user's home directory is always a valid ancestor for project paths, unlike the daemon's arbitrary cwd.
+
+### Files changed
+
+| File | Change |
+|---|---|
+| `packages/happy-app/sources/utils/worktree.ts` | Parse stderr for actual "not a git repository" message; pass through real errors otherwise |
+| `packages/happy-cli/src/api/apiMachine.ts` | Import `homedir` from `os`; replace `process.cwd()` with `homedir()` in `registerCommonHandlers` call |
