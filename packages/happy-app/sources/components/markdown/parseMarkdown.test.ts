@@ -57,3 +57,57 @@ describe('parseMarkdown', () => {
         ]);
     });
 });
+
+describe('parseMarkdown tables', () => {
+    it('parses a standard 3-column table with leading and trailing pipes', () => {
+        const blocks = parseMarkdown([
+            '| Name | Age | City |',
+            '| --- | --- | --- |',
+            '| Alice | 30 | NYC |',
+            '| Bob | 25 | LA |',
+        ].join('\n'));
+
+        expect(blocks).toHaveLength(1);
+        const table = blocks[0];
+        expect(table?.type).toBe('table');
+        if (table?.type  !== 'table') throw new Error('Expected table');
+
+        expect(table.headers).toHaveLength(3);
+        expect(table.rows).toHaveLength(2);
+        expect(table.rows[0]).toHaveLength(3);
+        expect(table.rows[1]).toHaveLength(3);
+    });
+
+    it('preserves empty cells instead of dropping them', () => {
+        const blocks = parseMarkdown([
+            '| A | B | C |',
+            '| --- | --- | --- |',
+            '| x |  | z |',
+        ].join('\n'));
+
+        expect(blocks).toHaveLength(1);
+        const table = blocks[0];
+        if (table?.type  !== 'table') throw new Error('Expected table');
+
+        expect(table.headers).toHaveLength(3);
+        expect(table.rows[0]).toHaveLength(3);
+        // Middle cell should be empty spans array
+        expect(table.rows[0][1]).toEqual([]);
+    });
+
+    it('parses tables without leading/trailing pipes', () => {
+        const blocks = parseMarkdown([
+            'A | B | C',
+            '--- | --- | ---',
+            'x | y | z',
+        ].join('\n'));
+
+        expect(blocks).toHaveLength(1);
+        const table = blocks[0];
+        if (table?.type  !== 'table') throw new Error('Expected table');
+
+        expect(table.headers).toHaveLength(3);
+        expect(table.rows).toHaveLength(1);
+        expect(table.rows[0]).toHaveLength(3);
+    });
+});

@@ -278,3 +278,44 @@ claudeRemote starts → nextMessage() returns { message: '', mode: lastMode }
 | File | Change |
 |---|---|
 | `packages/happy-cli/src/claude/claudeRemoteLauncher.ts` | Added `lastMode`, `drainAfterAbort`, `wasThinkingOnAbort` state; drain injection in `nextMessage`; session validity guard; conditional `onResumeHistory` suppression |
+
+---
+
+## 7. Markdown Table Rendering Missing Columns
+
+### Problem
+
+When Claude returns markdown tables in chat messages, the rendered table on the webapp is always missing one or more columns. Empty cells cause entire columns to disappear, and table rows without a leading `|` are silently dropped.
+
+### Root cause
+
+Two issues in `parseTable()` within `parseMarkdownBlock.ts`:
+
+| Bug | Root cause | Symptom |
+|---|---|---|
+| **Empty cells filtered out** | `.filter(cell => cell.length > 0)` was used to strip empty strings from `split('|')`, but also removed legitimate empty cells | Columns with empty content vanish; remaining cells shift left, causing misalignment |
+| **Rows without leading `\|` dropped** | Data row parsing required `rowLine.startsWith('|')`, skipping valid table rows that omit leading/trailing pipes | Entire data rows silently disappear |
+
+### Design
+
+#### 1. `splitTableCells()` helper function
+
+A new helper explicitly strips leading/trailing `|` characters before splitting, preserving all cells including empty ones. Replaces the `split('|').filter(cell => cell.length > 0)` pattern.
+
+#### 2. Remove `startsWith('|')` guard on data rows
+
+Any line collected as part of the table block is now parsed as a data row, regardless of whether it starts with `|`.
+
+### Files changed
+
+| File | Change |
+|---|---|
+| `packages/happy-app/sources/components/markdown/parseMarkdownBlock.ts` | Added `splitTableCells()` helper; replaced `.split().filter()` with `splitTableCells()` for headers and data rows; removed `startsWith('|')` guard |
+| `packages/happy-app/sources/components/markdown/parseMarkdown.test.ts` | Added 3 table parsing tests: standard 3-column table, empty cell preservation, tables without leading/trailing pipes |
+
+### Test coverage
+
+3 unit tests:
+- Standard 3-column table with leading/trailing pipes (verifies header count, row count, cell count)
+- Empty cell preservation (verifies empty cells produce `[]` instead of being dropped)
+- Tables without leading/trailing pipes (verifies parsing works without `|` prefix/suffix)

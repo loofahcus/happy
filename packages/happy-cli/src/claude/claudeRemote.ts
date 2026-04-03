@@ -226,14 +226,6 @@ export async function claudeRemote(opts: {
                 }
             }
 
-            // If an assistant message arrives after a task_notification, the notification was
-            // delivered inline (not as a separate sub-turn). Reset the flag so the next result
-            // is not misclassified as a notification sub-turn result, which would cause a hang.
-            if (message.type === 'assistant' && isTaskNotificationTurn) {
-                logger.debug('[claudeRemote] Assistant message after task_notification — inline notification, clearing isTaskNotificationTurn');
-                isTaskNotificationTurn = false;
-            }
-
             // Always suppress drain-related messages and strip PONG from mixed content.
             // PONG-only responses and DRAIN_MESSAGE echoes are never legitimate content.
             let messageToForward: SDKMessage | null = message;
