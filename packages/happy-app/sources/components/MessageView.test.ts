@@ -51,7 +51,13 @@ function render(message: UserTextMessage, renderer?: ReturnType<typeof create>) 
 }
 
 function labels(renderer: ReturnType<typeof create>) {
-    return renderer.root.findAllByType('Text').map((node: any) => node.props.children);
+    // The composer-independent timestamp (`formatMessageTime`) renders as a
+    // `Text` on every bubble regardless of pending/status state — it isn't a
+    // "label" this suite is about, so exclude it: `HH:MM` (today) or
+    // `Mon D HH:MM` (older).
+    const isTimestamp = (child: unknown) => typeof child === 'string'
+        && (/^\d{1,2}:\d{2}$/.test(child) || /^[A-Za-z]{3} \d{1,2} \d{1,2}:\d{2}$/.test(child));
+    return renderer.root.findAllByType('Text').map((node: any) => node.props.children).filter((child: unknown) => !isTimestamp(child));
 }
 
 afterEach(() => {
@@ -107,8 +113,8 @@ describe('user message frame', () => {
 
     it('puts the other participant’s name above their message', () => {
         const renderer = render({ ...base, author: { id: 'other', name: 'Alex', owner: false } });
-        const author = renderer.root.findByType('Text');
-        expect(author.props.children).toBe('Alex');
+        const author = renderer.root.findAllByType('Text').find((node: any) => node.props.children === 'Alex');
+        expect(author).toBeDefined();
         const container = author.parent.parent;
         expect(container.children[0]).toBe(author.parent);
         expect(container.children[1].findByType('MarkdownView').props.markdown).toBe('hello');

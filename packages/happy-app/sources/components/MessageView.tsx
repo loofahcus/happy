@@ -45,6 +45,22 @@ export const MessageView = React.memo((props: {
 });
 
 // RenderBlock function that dispatches to the correct component based on message kind
+function formatMessageTime(createdAt: number): string {
+    try {
+        const date = new Date(createdAt);
+        const today = new Date();
+        const isToday = date.getDate() === today.getDate()
+            && date.getMonth() === today.getMonth()
+            && date.getFullYear() === today.getFullYear();
+        const timeStr = date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false });
+        if (isToday) return timeStr;
+        const dateStr = date.toLocaleDateString([], { month: 'short', day: 'numeric' });
+        return `${dateStr} ${timeStr}`;
+    } catch {
+        return '';
+    }
+}
+
 function RenderBlock(props: {
   message: Message;
   metadata: Metadata | null;
@@ -240,6 +256,7 @@ function UserTextBlock(props: {
             <Text style={styles.commandChipText}>/{parsed.commandName}</Text>
           </View>
         </LongPressCopyable>
+        <Text style={styles.userTimestamp}>{formatMessageTime(props.message.createdAt)}</Text>
       </UserMessageFrame>
     );
   }
@@ -253,6 +270,7 @@ function UserTextBlock(props: {
           <MarkdownView externalCopyHandler markdown={parsed.text} onOptionPress={handleOptionPress} sessionId={props.sessionId} />
         </View>
       </LongPressCopyable>
+      <Text style={styles.userTimestamp}>{formatMessageTime(props.message.createdAt)}</Text>
     </UserMessageFrame>
   );
 }
@@ -274,7 +292,10 @@ function AgentTextBlock(props: {
   return (
     <View style={styles.agentMessageContainer}>
       <MarkdownView markdown={props.message.text} onOptionPress={handleOptionPress} sessionId={props.sessionId} />
-      {props.copyText ? <MessageCopyButton text={props.copyText} /> : null}
+      <View style={styles.agentFooterRow}>
+        {props.copyText ? <MessageCopyButton text={props.copyText} /> : null}
+        <Text style={styles.agentTimestamp}>{formatMessageTime(props.message.createdAt)}</Text>
+      </View>
     </View>
   );
 }
@@ -348,7 +369,14 @@ function AgentEventBlock(props: {
     const formatTime = (timestamp: number): string => {
       try {
         const date = new Date(timestamp * 1000); // Convert from Unix timestamp
-        return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+        const today = new Date();
+        const isToday = date.getDate() === today.getDate()
+            && date.getMonth() === today.getMonth()
+            && date.getFullYear() === today.getFullYear();
+        const timeStr = date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false });
+        if (isToday) return timeStr;
+        const dateStr = date.toLocaleDateString([], { month: 'short', day: 'numeric' });
+        return `${dateStr} ${timeStr}`;
       } catch {
         return t('message.unknownTime');
       }
@@ -532,6 +560,25 @@ const styles = StyleSheet.create((theme) => ({
   agentEventText: {
     color: theme.colors.agentEventText,
     fontSize: 14,
+  },
+  userTimestamp: {
+    color: theme.colors.agentEventText,
+    fontSize: 11,
+    marginTop: 2,
+    marginBottom: 12,
+    marginRight: 4,
+    textAlign: 'right' as const,
+  },
+  // Copy glyph and timestamp share the line under the reply.
+  agentFooterRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  agentTimestamp: {
+    color: theme.colors.agentEventText,
+    fontSize: 11,
+    marginLeft: 2,
   },
   toolContainer: {
     marginHorizontal: 8,
