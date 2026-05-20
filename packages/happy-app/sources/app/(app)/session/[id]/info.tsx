@@ -12,7 +12,7 @@ import { getSessionName, useSessionStatus, formatOSPlatform, formatPathRelativeT
 import { resolveSessionGitPresentation } from '@/utils/sessionGitPresentation';
 import * as Clipboard from 'expo-clipboard';
 import { Modal } from '@/modal';
-import { sessionArchive, sessionKill, sessionDelete } from '@/sync/ops';
+import { sessionArchive, sessionKill, sessionDelete, sessionUpdateMetadata } from '@/sync/ops';
 import { maybeCleanupWorktree } from '@/hooks/useWorktreeCleanup';
 import { useUnistyles } from 'react-native-unistyles';
 import { t } from '@/text';
@@ -216,6 +216,28 @@ function SessionInfoContent({ session }: { session: Session }) {
         }
     }, []);
 
+    const handleRenameSession = React.useCallback(async () => {
+        if (!session.metadata) return;
+        const result = await Modal.prompt(
+            t('sessionInfo.renameSession'),
+            t('sessionInfo.renameSessionPrompt'),
+            {
+                defaultValue: getSessionName(session),
+                placeholder: t('sessionInfo.renameSessionPlaceholder'),
+            },
+        );
+        if (result !== null && result.trim().length > 0) {
+            await sessionUpdateMetadata(
+                session.id,
+                (current) => ({
+                    ...current,
+                    summary: { text: result.trim(), updatedAt: Date.now() },
+                }),
+                session.metadataVersion,
+            );
+        }
+    }, [session, session.metadata, session.metadataVersion]);
+
     return (
         <>
             <ItemList
@@ -241,6 +263,14 @@ function SessionInfoContent({ session }: { session: Session }) {
                         ) : undefined}
                         onPress={() => router.push(`/session/${session.id}/changes`)}
                     />
+                    {session.metadata && (
+                        <Item
+                            title={t('sessionInfo.renameSession')}
+                            subtitle={t('sessionInfo.renameSessionSubtitle')}
+                            icon={<Ionicons name="pencil-outline" size={29} color="#007AFF" />}
+                            onPress={handleRenameSession}
+                        />
+                    )}
                     {session.metadata?.machineId && (
                         <Item
                             title={t('sessionInfo.viewMachine')}
@@ -382,6 +412,7 @@ function SessionInfoContent({ session }: { session: Session }) {
                         showChevron={false}
                     />
                 </ItemGroup>
+
 
                 {/* Metadata */}
                 {session.metadata && (
