@@ -242,6 +242,8 @@ export const pt: TranslationStructure = {
         analyticsEnabled: 'Análises anônimas de uso ativas',
         imageUpload: 'Upload de imagens',
         imageUploadSubtitle: 'Anexe imagens às mensagens para que agentes compatíveis as analisem',
+        verbose: 'Modo detalhado',
+        verboseSubtitle: 'Mostrar o raciocínio do modelo nas mensagens',
     },
 
     errors: {

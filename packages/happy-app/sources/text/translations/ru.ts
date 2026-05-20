@@ -229,6 +229,8 @@ export const ru: TranslationStructure = {
         analyticsEnabled: 'Анонимная аналитика использования активна',
         imageUpload: 'Загрузка изображений',
         imageUploadSubtitle: 'Прикрепляйте изображения к сообщениям для анализа поддерживаемыми агентами',
+        verbose: 'Подробный режим',
+        verboseSubtitle: 'Показывать процесс размышления модели в чате',
     },
 
     errors: {

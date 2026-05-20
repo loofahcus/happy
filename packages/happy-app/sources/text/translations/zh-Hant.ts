@@ -243,6 +243,8 @@ export const zhHant: TranslationStructure = {
         analyticsEnabled: '匿名使用分析已啟用',
         imageUpload: '圖片上傳',
         imageUploadSubtitle: '將圖片附加到訊息中，讓支援的代理分析',
+        verbose: '詳細模式',
+        verboseSubtitle: '在對話中顯示模型的思考過程',
     },
 
     errors: {

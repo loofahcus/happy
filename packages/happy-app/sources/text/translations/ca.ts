@@ -243,6 +243,8 @@ export const ca: TranslationStructure = {
         analyticsEnabled: 'Analítica anònima d\'ús activa',
         imageUpload: 'Pujada d\'imatges',
         imageUploadSubtitle: 'Adjunta imatges als missatges perquè els agents compatibles les analitzin',
+        verbose: 'Mode detallat',
+        verboseSubtitle: 'Mostra el raonament del model als missatges',
     },
 
     errors: {

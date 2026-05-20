@@ -183,15 +183,17 @@ function AgentTextBlock(props: {
     sync.sendMessage(props.sessionId, option.title, { source: 'option' });
   }, [props.sessionId]);
 
-  // Hide thinking messages
-  if (props.message.isThinking) {
+  const verbose = useSetting('verbose');
+
+  // Hide thinking messages unless verbose is enabled.
+  if (props.message.isThinking && !verbose) {
     return null;
   }
 
   return (
-    <View style={styles.agentMessageContainer}>
+    <View style={[styles.agentMessageContainer, props.message.isThinking && { opacity: 0.35 }]}>
       <MarkdownView markdown={props.message.text} onOptionPress={handleOptionPress} sessionId={props.sessionId} />
-      <Text style={styles.agentTimestamp}>{formatMessageTime(props.message.createdAt)}</Text>
+      {!props.message.isThinking && <Text style={styles.agentTimestamp}>{formatMessageTime(props.message.createdAt)}</Text>}
     </View>
   );
 }

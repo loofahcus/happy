@@ -31,3 +31,30 @@ Same logic also applies to the `limit-reached` agent event so quota windows rema
 
 - Re-implemented on top of upstream's restructured `UserTextBlock` (slash-command chip path, fork-from-message `Pressable` long-press) — fork's diff didn't apply cleanly.
 - Both render paths inside `UserTextBlock` now carry the timestamp (chip + bubble); the fork only had the single bubble path because the chip didn't exist yet.
+
+---
+
+## 2. Verbose Mode: Show Model Thinking Content
+
+### Problem
+
+Upstream silently drops every assistant message marked `isThinking`. Users investigating why a turn took the path it did have no way to see the model's reasoning blocks — they're not even toggleable.
+
+### Design
+
+Add a `verbose` boolean setting (default `false`) and gate the existing `if (props.message.isThinking) return null;` on it. When verbose is on, thinking blocks render in the same `agentMessageContainer` but at `opacity: 0.35` so they read as visually distinct from the actual response. Timestamps are still suppressed for thinking blocks (they fire constantly during a turn — adding timestamps would be noise).
+
+### Files changed
+
+| File | Change |
+|---|---|
+| `packages/happy-app/sources/sync/settings.ts` | Adds `verbose: z.boolean()` to `SettingsSchema` and default `false`. |
+| `packages/happy-app/sources/components/MessageView.tsx` | `AgentTextBlock` now reads `useSetting('verbose')`; thinking blocks render with reduced opacity instead of being dropped when verbose is on. |
+| `packages/happy-app/sources/app/(app)/settings/features.tsx` | Adds the **Verbose Mode** toggle in Settings → Features (chatbox-ellipses icon). |
+| `packages/happy-app/sources/text/_default.ts` | New i18n keys `settingsFeatures.verbose` + `settingsFeatures.verboseSubtitle`. |
+| `packages/happy-app/sources/text/translations/{en,es,ca,it,ja,pl,pt,ru,zh-Hans,zh-Hant}.ts` | Same keys translated in all 10 languages. |
+
+### Notes
+
+- Stacks naturally on the timestamp work (#1): thinking blocks intentionally do **not** get a timestamp because Claude emits many rapid thinking segments per turn.
+- Port of fork commit `713d0f03`. Diff applies cleanly on top of upstream's restructured `MessageView`.

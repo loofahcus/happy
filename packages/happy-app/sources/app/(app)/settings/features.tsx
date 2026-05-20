@@ -15,6 +15,7 @@ export default function FeaturesSettingsScreen() {
     const [markdownCopyV2, setMarkdownCopyV2] = useLocalSettingMutable('markdownCopyV2');
     const [hideInactiveSessions, setHideInactiveSessions] = useSettingMutable('hideInactiveSessions');
     const [expResumeSession, setExpResumeSession] = useSettingMutable('expResumeSession');
+    const [verbose, setVerbose] = useSettingMutable('verbose');
     const [fileDiffsSidebar, setFileDiffsSidebar] = useSettingMutable('fileDiffsSidebar');
     const [groupToolCalls, setGroupToolCalls] = useSettingMutable('groupToolCalls');
     const [expImageUpload, setExpImageUpload] = useSettingMutable('expImageUpload');
@@ -114,6 +115,18 @@ export default function FeaturesSettingsScreen() {
                         <Switch
                             value={expResumeSession}
                             onValueChange={setExpResumeSession}
+                        />
+                    }
+                    showChevron={false}
+                />
+                <Item
+                    title={t('settingsFeatures.verbose')}
+                    subtitle={t('settingsFeatures.verboseSubtitle')}
+                    icon={<Ionicons name="chatbox-ellipses-outline" size={29} color="#AF52DE" />}
+                    rightElement={
+                        <Switch
+                            value={verbose}
+                            onValueChange={setVerbose}
                         />
                     }
                     showChevron={false}

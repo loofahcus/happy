@@ -244,6 +244,8 @@ export const zhHans: TranslationStructure = {
         analyticsEnabled: '匿名使用分析已启用',
         imageUpload: '图片上传',
         imageUploadSubtitle: '将图片附加到消息中，以便受支持的代理进行分析',
+        verbose: '详细模式',
+        verboseSubtitle: '在对话中显示模型的思考过程',
     },
 
     errors: {

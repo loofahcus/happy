@@ -260,6 +260,8 @@ export const pl: TranslationStructure = {
         analyticsEnabled: 'Anonimowa analityka użytkowania aktywna',
         imageUpload: 'Przesyłanie obrazów',
         imageUploadSubtitle: 'Dołączaj obrazy do wiadomości, aby obsługiwani agenci mogli je analizować',
+        verbose: 'Tryb szczegółowy',
+        verboseSubtitle: 'Pokazuj rozumowanie modelu w wiadomościach',
     },
 
     errors: {
