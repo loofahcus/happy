@@ -40,6 +40,22 @@ export const MessageView = React.memo((props: {
 });
 
 // RenderBlock function that dispatches to the correct component based on message kind
+function formatMessageTime(createdAt: number): string {
+    try {
+        const date = new Date(createdAt);
+        const today = new Date();
+        const isToday = date.getDate() === today.getDate()
+            && date.getMonth() === today.getMonth()
+            && date.getFullYear() === today.getFullYear();
+        const timeStr = date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false });
+        if (isToday) return timeStr;
+        const dateStr = date.toLocaleDateString([], { month: 'short', day: 'numeric' });
+        return `${dateStr} ${timeStr}`;
+    } catch {
+        return '';
+    }
+}
+
 function RenderBlock(props: {
   message: Message;
   metadata: Metadata | null;
@@ -142,6 +158,7 @@ function UserTextBlock(props: {
         <View style={[styles.commandChip, styles.userMessageBubbleSolid, bubbleStyle]}>
           <Text style={styles.commandChipText}>/{parsed.commandName}</Text>
         </View>
+        <Text style={styles.userTimestamp}>{formatMessageTime(props.message.createdAt)}</Text>
       </View>
     );
   }
@@ -153,6 +170,7 @@ function UserTextBlock(props: {
       <View style={[styles.userMessageBubble, styles.userMessageBubbleSolid, bubbleStyle]}>
         <MarkdownView markdown={parsed.text} onOptionPress={handleOptionPress} sessionId={props.sessionId} />
       </View>
+      <Text style={styles.userTimestamp}>{formatMessageTime(props.message.createdAt)}</Text>
     </View>
   );
 }
@@ -173,6 +191,7 @@ function AgentTextBlock(props: {
   return (
     <View style={styles.agentMessageContainer}>
       <MarkdownView markdown={props.message.text} onOptionPress={handleOptionPress} sessionId={props.sessionId} />
+      <Text style={styles.agentTimestamp}>{formatMessageTime(props.message.createdAt)}</Text>
     </View>
   );
 }
@@ -199,7 +218,14 @@ function AgentEventBlock(props: {
     const formatTime = (timestamp: number): string => {
       try {
         const date = new Date(timestamp * 1000); // Convert from Unix timestamp
-        return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+        const today = new Date();
+        const isToday = date.getDate() === today.getDate()
+            && date.getMonth() === today.getMonth()
+            && date.getFullYear() === today.getFullYear();
+        const timeStr = date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false });
+        if (isToday) return timeStr;
+        const dateStr = date.toLocaleDateString([], { month: 'short', day: 'numeric' });
+        return `${dateStr} ${timeStr}`;
       } catch {
         return t('message.unknownTime');
       }
@@ -267,7 +293,7 @@ const styles = StyleSheet.create((theme) => ({
     paddingHorizontal: 12,
     paddingVertical: 4,
     borderRadius: 12,
-    marginBottom: 12,
+    marginBottom: 4,
     maxWidth: '100%',
   },
   userMessageBubbleSolid: {
@@ -299,7 +325,7 @@ const styles = StyleSheet.create((theme) => ({
     paddingHorizontal: 10,
     paddingVertical: 2,
     borderRadius: 10,
-    marginBottom: 12,
+    marginBottom: 4,
     maxWidth: '100%',
     opacity: 0.65,
   },
@@ -323,6 +349,20 @@ const styles = StyleSheet.create((theme) => ({
   agentEventText: {
     color: theme.colors.agentEventText,
     fontSize: 14,
+  },
+  userTimestamp: {
+    color: theme.colors.agentEventText,
+    fontSize: 11,
+    marginTop: 2,
+    marginBottom: 12,
+    marginRight: 4,
+    textAlign: 'right' as const,
+  },
+  agentTimestamp: {
+    color: theme.colors.agentEventText,
+    fontSize: 11,
+    marginTop: 2,
+    marginLeft: 2,
   },
   toolContainer: {
     marginHorizontal: 8,
