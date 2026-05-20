@@ -177,3 +177,25 @@ Rewrite `RenderImageBlock` to:
 ### Notes / scope
 
 - Port of the **image-display portion** of fork commit `9bb4b079`. The other halves of that commit (large-payload base64/AES stack overflows, RPC retry, image upload picker fallback) are deferred — symptoms haven't been observed yet on this fork's deployment.
+
+---
+
+## 6. CLI `npm pack` Fails: `@slopus/happy-wire` Not Found on Registry
+
+### Problem
+
+When running `npm pack` (or `npm publish`) on `packages/happy-cli`, the resulting tarball lists `@slopus/happy-wire` as a runtime dependency. Users installing the tarball via `npm install` then fail because `@slopus/happy-wire` doesn't exist on any public registry — it's a workspace-only package.
+
+### Root Cause
+
+`@slopus/happy-wire` was listed under `dependencies` in `packages/happy-cli/package.json`. In the monorepo this resolves via pnpm workspace symlink, but the published tarball has no workspace protocol — npm/yarn try to fetch it from the configured registry and 404.
+
+### Fix
+
+Move `@slopus/happy-wire` from `dependencies` to `devDependencies`. pkgroll (the CLI's bundler) already follows import paths at build time and inlines the wire package into `dist/`, so it doesn't need to be a runtime dep.
+
+### Files changed
+
+| File | Change |
+|---|---|
+| `packages/happy-cli/package.json` | `@slopus/happy-wire: "workspace:*"` moved from `dependencies` to `devDependencies`. |
