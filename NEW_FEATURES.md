@@ -136,3 +136,42 @@ Web platforms back MMKV with `localStorage` (~5 MB). To survive that ceiling:
 
 - Upstream `fetchMessages` was refactored into `fetchInitialLatestPage` + `fetchForwardSince` since the fork commit. We hook the cache at `applyFetchedMessages` (the shared sink) instead of the original single while-loop, so both initial and incremental fetches keep the cache fresh with no duplication.
 - Sessions cache is **new** — the fork did not cache the session list itself. It addresses the real-world pain of "blank sidebar for several seconds on every refresh."
+
+---
+
+## 4. Rename Session from the Webapp
+
+### Problem
+
+Sessions could only be identified by their auto-generated summary. There was no way to set a custom title from the webapp — the only related event in the app, `'renamed'`, was consumed by the storage layer but had no UI surface that produced it.
+
+### Design
+
+A generic `sessionUpdateMetadata(sessionId, updater, expectedVersion)` op encrypts the new metadata, ships it via the existing `update-metadata` socket event (already implemented server-side, mirroring `machine-update-metadata`), and handles version mismatches by:
+
+1. Reading the server's latest encrypted metadata returned in the `version-mismatch` response.
+2. Decrypting it, applying it to the store as the new base.
+3. Re-running the supplied `updater` so the user-intended fields (in this case `summary`) are merged on top.
+4. Retrying — up to 3 times — before surfacing the error.
+
+The rename UI is intentionally minimal: a `Modal.prompt` returning the new title, then `sessionUpdateMetadata(id, m => ({ ...m, summary: { text, updatedAt: now } }), session.metadataVersion)`.
+
+### UI surfaces
+
+| Surface | Trigger |
+|---|---|
+| Session info page header | Tap the session name |
+| Session info page → Quick Actions | "Rename Session" item with pencil icon |
+
+### Files changed
+
+| File | Change |
+|---|---|
+| `packages/happy-app/sources/sync/ops.ts` | New `sessionUpdateMetadata` with optimistic concurrency + retry. Imports `Metadata`. |
+| `packages/happy-app/sources/app/(app)/session/[id]/info.tsx` | Adds `handleRenameSession` callback. Wraps the session-name `<Text>` in a `<Pressable>`. Adds a Quick Actions item before "View Machine". |
+| `packages/happy-app/sources/text/_default.ts` and 10 translation files | Adds `renameSession`, `renameSessionPrompt`, `renameSessionPlaceholder`, `renameSessionSubtitle`. |
+
+### Notes / deviations from upstream commit `7b9e95d6`
+
+- The fork commit also touched `SessionsList.tsx` to "remove a broken long-press handler". Upstream already has a working `onLongPress: showActionAlert` on session items, so we leave that path alone.
+- `Modal.prompt` and `apiSocket.emitWithAck` are the same primitives already used by other update flows (e.g. `machine-update-metadata` for renaming machines), so no new infra.

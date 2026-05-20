@@ -6,7 +6,7 @@
 import { apiSocket } from './apiSocket';
 import { sync } from './sync';
 import { storage } from './storage';
-import type { AgentQuestionAnswer, MachineMetadata, SessionAgentModesPatch } from './storageTypes';
+import type { AgentQuestionAnswer, MachineMetadata, Metadata, SessionAgentModesPatch } from './storageTypes';
 import { markAgentModePushPending, clearAgentModePushPending, type AgentModeField } from './agentModesPending';
 import {
     isRigMetadata,
@@ -1150,6 +1150,81 @@ export async function forkAndSpawn(
  */
 export async function spawnSideChat(source: ForkSource): Promise<SpawnSessionResult> {
     return forkAndSpawn(source, { isSideChat: true });
+}
+
+/**
+ * Update session metadata with optimistic concurrency control and automatic
+ * retry on version mismatch (e.g. concurrent edit from CLI). Up to 3 attempts.
+ *
+ * Used today for the rename flow but generic enough for any metadata update.
+ */
+export async function sessionUpdateMetadata(
+    sessionId: string,
+    updater: (current: Metadata) => Metadata,
+    expectedVersion: number,
+    maxRetries: number = 3
+): Promise<{ version: number }> {
+    const sessionEncryption = sync.encryption.getSessionEncryption(sessionId);
+    if (!sessionEncryption) {
+        throw new Error(`Session encryption not found for ${sessionId}`);
+    }
+
+    let currentVersion = expectedVersion;
+    let retryCount = 0;
+
+    while (retryCount < maxRetries) {
+        const store = (await import('./storage')).storage;
+        const session = store.getState().sessions[sessionId];
+        if (!session?.metadata) {
+            throw new Error('Session metadata not available');
+        }
+
+        const updatedMetadata = updater(session.metadata);
+        const encryptedMetadata = await sessionEncryption.encryptMetadata(updatedMetadata);
+
+        const result = await apiSocket.emitWithAck<{
+            result: 'success' | 'version-mismatch' | 'error';
+            version?: number;
+            metadata?: string;
+        }>('update-metadata', {
+            sid: sessionId,
+            metadata: encryptedMetadata,
+            expectedVersion: currentVersion,
+        });
+
+        if (result.result === 'success') {
+            return { version: result.version! };
+        } else if (result.result === 'version-mismatch') {
+            currentVersion = result.version!;
+
+            const latestMetadata = await sessionEncryption.decryptMetadata(
+                result.version!,
+                result.metadata!,
+            );
+            if (!latestMetadata) {
+                throw new Error('Failed to decrypt latest metadata');
+            }
+
+            // Refresh the store so the next iteration's `updater` sees fresh
+            // base metadata and our intended fields are merged on top.
+            store.getState().applySessions([{
+                ...session,
+                metadata: latestMetadata,
+                metadataVersion: result.version!,
+            }]);
+
+            retryCount++;
+            if (retryCount >= maxRetries) {
+                throw new Error(
+                    `Failed to update after ${maxRetries} retries due to version conflicts`,
+                );
+            }
+        } else {
+            throw new Error('Failed to update session metadata');
+        }
+    }
+
+    throw new Error('Unexpected error in sessionUpdateMetadata');
 }
 
 // Export types for external use
