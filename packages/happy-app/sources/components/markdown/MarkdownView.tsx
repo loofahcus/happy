@@ -1,6 +1,6 @@
 import { MarkdownSpan, parseMarkdown } from './parseMarkdown';
 import * as React from 'react';
-import { Image, Pressable, View, Platform } from 'react-native';
+import { Image, Pressable, View, Platform, ActivityIndicator } from 'react-native';
 import { HorizontalScrollView } from '../HorizontalScrollView';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import { StyleSheet } from 'react-native-unistyles';
@@ -8,6 +8,7 @@ import { Text } from '../StyledText';
 import { Typography } from '@/constants/Typography';
 import { SimpleSyntaxHighlighter } from '../SimpleSyntaxHighlighter';
 import { Modal } from '@/modal';
+import { sessionReadFile } from '@/sync/ops';
 import { useLocalSetting } from '@/sync/storage';
 import { storeTempText } from '@/sync/persistence';
 import { useRouter } from 'expo-router';
@@ -79,7 +80,7 @@ export const MarkdownView = React.memo((props: {
                     } else if (block.type === 'table') {
                         return <RenderTableBlock headers={block.headers} rows={block.rows} onLinkPress={handleLinkPress} selectable={selectable} key={index} first={index === 0} last={index === blocks.length - 1} />;
                     } else if (block.type === 'image') {
-                        return <RenderImageBlock url={block.url} alt={block.alt} key={index} first={index === 0} last={index === blocks.length - 1} />;
+                        return <RenderImageBlock url={block.url} alt={block.alt} key={index} first={index === 0} last={index === blocks.length - 1} sessionId={props.sessionId} />;
                     } else {
                         return null;
                     }
@@ -207,17 +208,118 @@ function RenderCodeBlock(props: { content: string, language: string | null, firs
     );
 }
 
-function RenderImageBlock(props: { url: string, alt: string, first: boolean, last: boolean }) {
-    const accessibleLabel = props.alt || 'Markdown image';
+const IMAGE_MIME_TYPES: Record<string, string> = {
+    '.png': 'image/png',
+    '.jpg': 'image/jpeg',
+    '.jpeg': 'image/jpeg',
+    '.gif': 'image/gif',
+    '.webp': 'image/webp',
+    '.svg': 'image/svg+xml',
+    '.bmp': 'image/bmp',
+    '.ico': 'image/x-icon',
+};
 
-    return (
-        <View style={[style.imageBlock, props.first && style.first, props.last && style.last]}>
+function isLocalFilePath(url: string): boolean {
+    if (url.startsWith('http://') || url.startsWith('https://') || url.startsWith('data:') || url.startsWith('blob:')) {
+        return false;
+    }
+    return true;
+}
+
+function getMimeFromPath(path: string): string {
+    const dot = path.lastIndexOf('.');
+    if (dot === -1) return 'image/png';
+    const ext = path.slice(dot).toLowerCase();
+    return IMAGE_MIME_TYPES[ext] ?? 'image/png';
+}
+
+function RenderImageBlock(props: { url: string, alt: string, first: boolean, last: boolean, sessionId?: string }) {
+    const accessibleLabel = props.alt || 'Markdown image';
+    const needsFetch = isLocalFilePath(props.url) && !!props.sessionId;
+
+    const [dataUri, setDataUri] = React.useState<string | null>(null);
+    const [loading, setLoading] = React.useState(needsFetch);
+    const [error, setError] = React.useState<string | null>(null);
+
+    React.useEffect(() => {
+        if (!needsFetch) return;
+        let cancelled = false;
+        setLoading(true);
+        setError(null);
+        sessionReadFile(props.sessionId!, props.url).then((res) => {
+            if (cancelled) return;
+            if (res.success && res.content) {
+                const mime = getMimeFromPath(props.url);
+                setDataUri(`data:${mime};base64,${res.content}`);
+            } else {
+                console.warn('[MarkdownImage] sessionReadFile failed', props.url, res.error);
+                setError(res.error || 'Image failed to load');
+            }
+        }).catch((e) => {
+            console.warn('[MarkdownImage] sessionReadFile threw', props.url, e);
+            if (!cancelled) setError('Image failed to load');
+        }).finally(() => {
+            if (!cancelled) setLoading(false);
+        });
+        return () => { cancelled = true; };
+    }, [props.url, props.sessionId, needsFetch]);
+
+    const resolvedUri = needsFetch ? dataUri : props.url;
+
+    if (loading) {
+        return (
+            <View style={[style.imageBlock, props.first && style.first, props.last && style.last]}>
+                <View style={[style.image, { justifyContent: 'center', alignItems: 'center' }]}>
+                    <ActivityIndicator />
+                </View>
+            </View>
+        );
+    }
+
+    if (error || !resolvedUri) {
+        return (
+            <View style={[style.imageBlock, props.first && style.first, props.last && style.last]}>
+                <Text style={style.imageCaption}>⚠ {error ?? 'Image failed to load'} — {props.url.slice(0, 80)}</Text>
+            </View>
+        );
+    }
+
+    // RN's <Image> on web does not handle base64 data URIs reliably and
+    // renders many local images as blank gray boxes. Fall back to the
+    // native <img> element on web for reliable rendering; native platforms
+    // keep the RN component.
+    const imageElement = Platform.OS === 'web'
+        ? React.createElement('img', {
+            src: resolvedUri,
+            alt: accessibleLabel,
+            style: {
+                width: '100%',
+                maxHeight: 480,
+                borderRadius: 12,
+                objectFit: 'contain' as any,
+                backgroundColor: 'transparent',
+            },
+            onError: (e: unknown) => {
+                console.warn('[MarkdownImage] web load failed', props.url.slice(0, 100), e);
+                setError('Image failed to load');
+            },
+        })
+        : (
             <Image
-                source={{ uri: props.url }}
+                source={{ uri: resolvedUri }}
                 style={style.image}
                 accessibilityLabel={accessibleLabel}
                 resizeMode="contain"
+                onError={(e) => {
+                    console.warn('[MarkdownImage] native load failed', props.url.slice(0, 100), e.nativeEvent.error);
+                    setError(e.nativeEvent.error || 'Image failed to load');
+                }}
             />
+        );
+
+    return (
+        <View style={[style.imageBlock, props.first && style.first, props.last && style.last]}>
+            {imageElement}
             {props.alt ? (
                 <Text style={style.imageCaption}>{props.alt}</Text>
             ) : null}
