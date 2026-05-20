@@ -28,6 +28,8 @@ import { NormalizedMessage, normalizeRawMessage, RawRecord } from './typesRaw';
 import { applySettings, Settings, settingsDefaults, settingsParse, settingsToSyncPayload, SUPPORTED_SCHEMA_VERSION } from './settings';
 import { Profile, profileParse } from './profile';
 import { loadPendingSettings, savePendingSettings } from './persistence';
+import { loadMessageCache, appendMessageCache, deleteMessageCache, cleanExpiredMessageCaches } from './messageCache';
+import { loadCachedSessions, saveCachedSessions } from './sessionsCache';
 import {
     initializeTracking,
     trackGitHubConnected,
@@ -250,6 +252,22 @@ class Sync {
 
         // Subscribe to updates
         this.subscribeToUpdates();
+
+        // Hydrate session list from local cache so the sidebar paints
+        // instantly while the server fetch runs in background. The
+        // subsequent fetchSessions() will overwrite each row with fresh
+        // data once it returns.
+        const cachedSessions = loadCachedSessions();
+        if (cachedSessions && cachedSessions.length > 0) {
+            log.log(`📥 #init: Hydrating ${cachedSessions.length} cached sessions for instant paint`);
+            this.applySessions(cachedSessions);
+            // Mark UI ready immediately — fresh data will replace the
+            // rows when fetchSessions resolves below.
+            storage.getState().applyReady();
+        }
+
+        // Drop expired per-session message caches.
+        cleanExpiredMessageCaches();
 
         // Sync initial PostHog opt-out state with stored settings
         if (tracking) {
@@ -1030,6 +1048,17 @@ class Sync {
             thinking: s.active ? (current[s.id]?.thinking ?? false) : false,
             thinkingAt: s.active ? (current[s.id]?.thinkingAt ?? 0) : 0,
         })));
+
+        // Mirror the active list into the on-disk cache for the next
+        // cold start. Cast through `unknown` because the local row type
+        // here only differs from the public Session type in the optional
+        // `presence` field — saveCachedSessions normalises that.
+        try {
+            saveCachedSessions(decryptedSessions as unknown as Parameters<typeof saveCachedSessions>[0]);
+        } catch (err) {
+            log.log(`📥 fetchSessions: failed to write sessions cache: ${String(err)}`);
+        }
+
         log.log(`📥 fetchSessions completed - processed ${decryptedSessions.length} sessions`);
 
     }
@@ -1900,6 +1929,18 @@ class Sync {
 
     private fetchMessages = async (sessionId: string) => {
         log.log(`💬 fetchMessages starting for session ${sessionId} - acquiring lock`);
+        // Hydrate cached messages before acquiring the network lock so the
+        // chat starts painting immediately. Only applies to the very first
+        // fetch (no last-seq recorded yet); subsequent fetches are deltas
+        // and don't need the cache hit.
+        if (this.sessionLastSeq.get(sessionId) === undefined) {
+            const cached = loadMessageCache(sessionId);
+            if (cached && cached.messages.length > 0) {
+                log.log(`💬 fetchMessages: hydrated ${cached.messages.length} cached messages for ${sessionId}, lastSeq=${cached.lastSeq}`);
+                this.applyMessages(sessionId, cached.messages);
+                this.sessionLastSeq.set(sessionId, cached.lastSeq);
+            }
+        }
         const lock = this.getSessionMessageLock(sessionId);
         await lock.inLock(async () => {
             const encryption = this.encryption.getSessionEncryption(sessionId);
@@ -2060,6 +2101,12 @@ class Sync {
         }
         if (normalizedMessages.length > 0) {
             this.applyMessages(sessionId, normalizedMessages);
+            // Keep the on-disk cache in sync. We persist after the
+            // store apply so a crash mid-write doesn't leave us with
+            // a cache that's ahead of what the user has actually
+            // seen.
+            const finalSeq = this.sessionLastSeq.get(sessionId) ?? 0;
+            appendMessageCache(sessionId, normalizedMessages, finalSeq);
         }
     }
 
@@ -2256,6 +2303,9 @@ class Sync {
                     if (lastMessage && currentLastSeq !== undefined && incomingSeq === currentLastSeq + 1) {
                         this.enqueueMessages(updateData.body.sid, [lastMessage]);
                         this.sessionLastSeq.set(updateData.body.sid, incomingSeq);
+                        // Persist socket-delivered message to the on-disk cache; otherwise
+                        // a hard refresh loses messages that arrived only via fast-path.
+                        appendMessageCache(updateData.body.sid, [lastMessage], incomingSeq);
                         let hasMutableTool = false;
                         if (lastMessage.role === 'agent' && lastMessage.content[0] && lastMessage.content[0].type === 'tool-result') {
                             hasMutableTool = storage.getState().isMutableToolCall(updateData.body.sid, lastMessage.content[0].tool_use_id);
@@ -2287,6 +2337,7 @@ class Sync {
 
             // Clear any cached git status
             gitStatusSync.clearForSession(sessionId);
+            deleteMessageCache(sessionId);
             this.messagesSync.delete(sessionId);
             this.sendSync.delete(sessionId);
             this.pendingOutbox.delete(sessionId);

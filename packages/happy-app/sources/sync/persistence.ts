@@ -1,4 +1,5 @@
 import { MMKV } from 'react-native-mmkv';
+import { evictOldestMessageCache } from './messageCache';
 import { Settings, settingsDefaults, settingsParse, settingsToSyncPayload, SettingsSchema } from './settings';
 import { LocalSettings, localSettingsDefaults, localSettingsParse } from './localSettings';
 import { Purchases, purchasesDefaults, purchasesParse } from './purchases';
@@ -6,6 +7,25 @@ import { Profile, profileDefaults, profileParse } from './profile';
 import type { PermissionModeKey } from '@/components/PermissionModeSelector';
 
 const mmkv = new MMKV();
+
+/**
+ * Wrapper around mmkv.set that recovers from MMKV quota errors
+ * (browser localStorage hits ~5MB on web). On quota error, evict the
+ * oldest message cache entry via LRU and retry.
+ */
+export function safeSet(key: string, value: string | number | boolean): void {
+    while (true) {
+        try {
+            mmkv.set(key, value);
+            return;
+        } catch {
+            if (!evictOldestMessageCache()) {
+                console.warn('[persistence] Storage quota exceeded, no caches left to evict');
+                return;
+            }
+        }
+    }
+}
 const NEW_SESSION_DRAFT_KEY = 'new-session-draft-v1';
 const REGISTERED_PUSH_TOKEN_KEY = 'registered-push-token-v1';
 const VOICE_SOFT_PAYWALL_SHOWN_KEY = 'voice-soft-paywall-shown';
@@ -43,7 +63,7 @@ export function loadSettings(): { settings: Settings, version: number | null } {
 }
 
 export function saveSettings(settings: Settings, version: number) {
-    mmkv.set('settings', JSON.stringify({ settings: settingsToSyncPayload(settings), version }));
+    safeSet('settings', JSON.stringify({ settings: settingsToSyncPayload(settings), version }));
 }
 
 export function loadPendingSettings(): Partial<Settings> {
@@ -61,7 +81,7 @@ export function loadPendingSettings(): Partial<Settings> {
 }
 
 export function savePendingSettings(settings: Partial<Settings>) {
-    mmkv.set('pending-settings', JSON.stringify(settings));
+    safeSet('pending-settings', JSON.stringify(settings));
 }
 
 export function loadLocalSettings(): LocalSettings {
@@ -79,7 +99,7 @@ export function loadLocalSettings(): LocalSettings {
 }
 
 export function saveLocalSettings(settings: LocalSettings) {
-    mmkv.set('local-settings', JSON.stringify(settings));
+    safeSet('local-settings', JSON.stringify(settings));
 }
 
 export function loadThemePreference(): 'light' | 'dark' | 'adaptive' {
@@ -112,7 +132,7 @@ export function loadPurchases(): Purchases {
 }
 
 export function savePurchases(purchases: Purchases) {
-    mmkv.set('purchases', JSON.stringify(purchases));
+    safeSet('purchases', JSON.stringify(purchases));
 }
 
 export function loadSessionDrafts(): Record<string, string> {
@@ -129,7 +149,7 @@ export function loadSessionDrafts(): Record<string, string> {
 }
 
 export function saveSessionDrafts(drafts: Record<string, string>) {
-    mmkv.set('session-drafts', JSON.stringify(drafts));
+    safeSet('session-drafts', JSON.stringify(drafts));
 }
 
 export function loadNewSessionDraft(): NewSessionDraft | null {
@@ -177,7 +197,7 @@ export function loadNewSessionDraft(): NewSessionDraft | null {
 }
 
 export function saveNewSessionDraft(draft: NewSessionDraft) {
-    mmkv.set(NEW_SESSION_DRAFT_KEY, JSON.stringify(draft));
+    safeSet(NEW_SESSION_DRAFT_KEY, JSON.stringify(draft));
 }
 
 export function clearNewSessionDraft() {
@@ -189,7 +209,7 @@ export function loadRegisteredPushToken(): string | null {
 }
 
 export function saveRegisteredPushToken(token: string) {
-    mmkv.set(REGISTERED_PUSH_TOKEN_KEY, token);
+    safeSet(REGISTERED_PUSH_TOKEN_KEY, token);
 }
 
 export function clearRegisteredPushToken() {
@@ -228,13 +248,13 @@ export function loadProfile(): Profile {
 }
 
 export function saveProfile(profile: Profile) {
-    mmkv.set('profile', JSON.stringify(profile));
+    safeSet('profile', JSON.stringify(profile));
 }
 
 // Simple temporary text storage for passing large strings between screens
 export function storeTempText(content: string): string {
     const id = `temp_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
-    mmkv.set(`temp_text_${id}`, content);
+    safeSet(`temp_text_${id}`, content);
     return id;
 }
 
@@ -253,7 +273,7 @@ export function getVoiceSoftPaywallShownCount(): number {
 }
 
 export function incrementVoiceSoftPaywallShown() {
-    mmkv.set(VOICE_SOFT_PAYWALL_SHOWN_KEY, getVoiceSoftPaywallShownCount() + 1);
+    safeSet(VOICE_SOFT_PAYWALL_SHOWN_KEY, getVoiceSoftPaywallShownCount() + 1);
 }
 
 export function getVoiceOnboardingPromptLoadCount(): number {
@@ -261,7 +281,7 @@ export function getVoiceOnboardingPromptLoadCount(): number {
 }
 
 export function incrementVoiceOnboardingPromptLoadCount() {
-    mmkv.set(VOICE_ONBOARDING_PROMPT_LOAD_COUNT_KEY, getVoiceOnboardingPromptLoadCount() + 1);
+    safeSet(VOICE_ONBOARDING_PROMPT_LOAD_COUNT_KEY, getVoiceOnboardingPromptLoadCount() + 1);
 }
 
 export function getVoiceMessageCount(): number {
@@ -269,7 +289,7 @@ export function getVoiceMessageCount(): number {
 }
 
 export function incrementVoiceMessageCount() {
-    mmkv.set(VOICE_MESSAGE_COUNT_KEY, getVoiceMessageCount() + 1);
+    safeSet(VOICE_MESSAGE_COUNT_KEY, getVoiceMessageCount() + 1);
 }
 
 export function getVoiceLocalCounters() {
