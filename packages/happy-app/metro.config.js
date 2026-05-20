@@ -26,6 +26,17 @@ config.resolver.blockList = [
 // `r.__H` crashes. Pin to the CJS bundles so everyone shares state.
 const preactCjsPath = require.resolve('preact');
 const preactHooksCjsPath = require.resolve('preact/hooks');
+
+// Pin react / react-dom (and the JSX runtimes) to the app's single copy.
+// `@pierre/diffs` is bundled as its own Metro chunk and resolves react via
+// its nested package — that produces a second React instance whose internal
+// dispatcher is null, breaking `useContext` for components that render into
+// the app DOM. Same root cause as the preact pinning above.
+const reactPath = require.resolve('react');
+const reactDomPath = require.resolve('react-dom');
+const reactJsxRuntimePath = require.resolve('react/jsx-runtime');
+const reactJsxDevRuntimePath = require.resolve('react/jsx-dev-runtime');
+
 const baseResolveRequest = config.resolver.resolveRequest;
 config.resolver.resolveRequest = (context, moduleName, platform) => {
   if (moduleName === 'preact') {
@@ -33,6 +44,18 @@ config.resolver.resolveRequest = (context, moduleName, platform) => {
   }
   if (moduleName === 'preact/hooks') {
     return { filePath: preactHooksCjsPath, type: 'sourceFile' };
+  }
+  if (moduleName === 'react') {
+    return { filePath: reactPath, type: 'sourceFile' };
+  }
+  if (moduleName === 'react-dom') {
+    return { filePath: reactDomPath, type: 'sourceFile' };
+  }
+  if (moduleName === 'react/jsx-runtime') {
+    return { filePath: reactJsxRuntimePath, type: 'sourceFile' };
+  }
+  if (moduleName === 'react/jsx-dev-runtime') {
+    return { filePath: reactJsxDevRuntimePath, type: 'sourceFile' };
   }
   if (baseResolveRequest) {
     return baseResolveRequest(context, moduleName, platform);
