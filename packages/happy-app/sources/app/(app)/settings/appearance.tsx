@@ -222,6 +222,7 @@ export default function AppearanceSettingsScreen() {
     const [compactToolCalls, setCompactToolCalls] = useSettingMutable('compactToolCalls');
     const [userMessageBubbleColor, setUserMessageBubbleColor] = useSettingMutable('userMessageBubbleColor');
     const [usageLimitShowRemaining, setUsageLimitShowRemaining] = useSettingMutable('usageLimitShowRemaining');
+    const [verbose, setVerbose] = useSettingMutable('verbose');
     const [themePreference, setThemePreference] = useLocalSettingMutable('themePreference');
     const [preferredLanguage] = useSettingMutable('preferredLanguage');
     const [avatarStyleSetting, setAvatarStyle] = useSettingMutable('avatarStyle');
@@ -317,6 +318,17 @@ export default function AppearanceSettingsScreen() {
                         <Switch
                             value={usageLimitShowRemaining}
                             onValueChange={setUsageLimitShowRemaining}
+                        />
+                    }
+                />
+                <Item
+                    title={t('settingsFeatures.verbose')}
+                    subtitle={t('settingsFeatures.verboseSubtitle')}
+                    icon={<Ionicons name="chatbox-ellipses-outline" size={29} color="#AF52DE" />}
+                    rightElement={
+                        <Switch
+                            value={verbose}
+                            onValueChange={setVerbose}
                         />
                     }
                 />

@@ -238,6 +238,8 @@ export const pt: TranslationStructure = {
         markdownCopyV2Subtitle: 'Pressione e segure para abrir modal de cópia',
         groupToolCalls: 'Agrupar chamadas de ferramentas',
         groupToolCallsSubtitle: 'Recolher chamadas consecutivas de ferramentas em um único contêiner',
+        verbose: 'Modo detalhado',
+        verboseSubtitle: 'Mostrar o raciocínio do modelo nas mensagens',
     },
 
     errors: {

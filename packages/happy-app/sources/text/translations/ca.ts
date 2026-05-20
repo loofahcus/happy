@@ -239,6 +239,8 @@ export const ca: TranslationStructure = {
         markdownCopyV2Subtitle: 'Pulsació llarga obre modal de còpia',
         groupToolCalls: 'Agrupa les crides a eines',
         groupToolCallsSubtitle: 'Replega les crides consecutives a eines en un sol contenidor',
+        verbose: 'Mode detallat',
+        verboseSubtitle: 'Mostra el raonament del model als missatges',
     },
 
     errors: {

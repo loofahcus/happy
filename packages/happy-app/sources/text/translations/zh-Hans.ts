@@ -240,6 +240,8 @@ export const zhHans: TranslationStructure = {
         markdownCopyV2Subtitle: '长按打开复制模态框',
         groupToolCalls: '分组工具调用',
         groupToolCallsSubtitle: '将连续的工具调用折叠到一个容器中',
+        verbose: '详细模式',
+        verboseSubtitle: '在对话中显示模型的思考过程',
     },
 
     errors: {

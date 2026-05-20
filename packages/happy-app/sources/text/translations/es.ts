@@ -239,6 +239,8 @@ export const es: TranslationStructure = {
         markdownCopyV2Subtitle: 'Pulsación larga abre modal de copiado',
         groupToolCalls: 'Agrupar llamadas a herramientas',
         groupToolCallsSubtitle: 'Contrae las llamadas consecutivas a herramientas en un solo contenedor',
+        verbose: 'Modo detallado',
+        verboseSubtitle: 'Mostrar el razonamiento del modelo en los mensajes',
     },
 
     errors: {

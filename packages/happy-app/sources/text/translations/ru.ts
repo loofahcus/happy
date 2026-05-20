@@ -224,6 +224,8 @@ export const ru: TranslationStructure = {
         markdownCopyV2Subtitle: 'Долгое нажатие открывает модальное окно копирования',
         groupToolCalls: 'Группировать вызовы инструментов',
         groupToolCallsSubtitle: 'Сворачивать подряд идущие вызовы инструментов в один блок',
+        verbose: 'Подробный режим',
+        verboseSubtitle: 'Показывать процесс размышления модели в чате',
     },
 
     errors: {

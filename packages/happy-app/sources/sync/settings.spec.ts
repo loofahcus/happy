@@ -215,6 +215,7 @@ describe('settings', () => {
                 lastUsedPermissionMode: null,
                 lastUsedModelMode: null,
                 agentDefaultOverrides: {},
+                verbose: false,
                 dismissedCLIWarnings: { perMachine: {}, global: {} },
             });
         });

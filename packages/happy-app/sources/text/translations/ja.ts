@@ -240,6 +240,8 @@ export const ja: TranslationStructure = {
         markdownCopyV2Subtitle: '長押しでコピーモーダルを開く',
         groupToolCalls: 'ツール呼び出しをグループ化',
         groupToolCallsSubtitle: '連続するツール呼び出しを1つのコンテナにまとめる',
+        verbose: '詳細モード',
+        verboseSubtitle: 'モデルの思考内容をチャットに表示',
     },
 
     errors: {

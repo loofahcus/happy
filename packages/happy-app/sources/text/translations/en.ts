@@ -253,6 +253,8 @@ export const en: TranslationStructure = {
         markdownCopyV2Subtitle: 'Long press opens copy modal',
         groupToolCalls: 'Group Tool Calls',
         groupToolCallsSubtitle: 'Collapse consecutive tool calls into one container',
+        verbose: 'Verbose Mode',
+        verboseSubtitle: 'Show model thinking content in chat messages',
     },
 
     errors: {

@@ -256,6 +256,8 @@ export const pl: TranslationStructure = {
         markdownCopyV2Subtitle: 'Długie naciśnięcie otwiera modal kopiowania',
         groupToolCalls: 'Grupuj wywołania narzędzi',
         groupToolCallsSubtitle: 'Zwijaj kolejne wywołania narzędzi w jeden kontener',
+        verbose: 'Tryb szczegółowy',
+        verboseSubtitle: 'Pokazuj rozumowanie modelu w wiadomościach',
     },
 
     errors: {

@@ -239,6 +239,8 @@ export const zhHant: TranslationStructure = {
         markdownCopyV2Subtitle: '長按開啟複製強制回應視窗',
         groupToolCalls: '分組工具呼叫',
         groupToolCallsSubtitle: '將連續的工具呼叫摺疊到單一容器中',
+        verbose: '詳細模式',
+        verboseSubtitle: '在對話中顯示模型的思考過程',
     },
 
     errors: {
