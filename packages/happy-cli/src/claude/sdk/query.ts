@@ -8,6 +8,7 @@ import type { QueryOptions, QueryPrompt, SDKMessage } from './types'
 import type { SDKUserMessage } from '@anthropic-ai/claude-agent-sdk'
 import { ensureLocalProxyBypass } from '../utils/proxyBypass'
 import { resolveHappyEntrypoint } from './happyEntrypoint'
+import { findAppleClaudeCodePath } from './appleAuth'
 
 /**
  * Wraps the official SDK query() with our QueryOptions adapter
@@ -64,11 +65,22 @@ export function query(params: { prompt: QueryPrompt; options?: QueryOptions }): 
     for (const [key, value] of Object.entries(process.env)) {
         if (typeof value === 'string') env[key] = value
     }
+    if (opts?.env) {
+        for (const [key, value] of Object.entries(opts.env)) {
+            if (typeof value === 'string') env[key] = value
+        }
+    }
     env.CLAUDE_CODE_ENTRYPOINT = resolveHappyEntrypoint(process.env.CLAUDE_CODE_ENTRYPOINT)
     if (opts?.mcpServers && Object.keys(opts.mcpServers).length > 0) {
         ensureLocalProxyBypass(env)
     }
     sdkOptions.env = env
+
+    // Use Apple Claude Code binary if available (handles auth via proxy)
+    const applePath = findAppleClaudeCodePath()
+    if (applePath) {
+        sdkOptions.pathToClaudeCodeExecutable = applePath
+    }
 
     // Map canCallTool -> canUseTool
     if (opts?.canCallTool) {

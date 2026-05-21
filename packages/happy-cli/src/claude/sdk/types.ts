@@ -55,6 +55,7 @@ export interface QueryOptions {
     effort?: 'low' | 'medium' | 'high' | 'xhigh' | 'max'
     /** SDK beta features to enable (e.g., 1M context window) */
     betas?: string[]
+    env?: Record<string, string | undefined>
 }
 
 /**

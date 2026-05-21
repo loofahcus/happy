@@ -199,3 +199,35 @@ Move `@slopus/happy-wire` from `dependencies` to `devDependencies`. pkgroll (the
 | File | Change |
 |---|---|
 | `packages/happy-cli/package.json` | `@slopus/happy-wire: "workspace:*"` moved from `dependencies` to `devDependencies`. |
+
+---
+
+## 7. SDK Query Fails Under Apple Claude Code Auth
+
+### Problem
+
+Remote mode fails with "Invalid API key · Fix external API key" when running under Apple Claude Code.
+
+### Root cause
+
+Upstream switched the SDK wrapper from spawning a `claude` child process to calling the SDK in-process. The old spawn approach inherited Apple's auth environment (the Apple wrapper starts a local auth proxy and injects `ANTHROPIC_BASE_URL` into the child process). The new in-process approach bypasses the Apple wrapper entirely, so the SDK has no auth proxy URL and falls back to direct Anthropic API auth — which fails without a valid `ANTHROPIC_API_KEY`.
+
+Additionally, the daemon process (which hosts remote sessions) is detached and does not inherit Apple's per-session env vars (`ANTHROPIC_BASE_URL`, `APPLE_CLAUDE_CODE_PORT`, etc.), so even passing `process.env` to the SDK doesn't help.
+
+### Design
+
+Two-part fix:
+
+1. **Detect Apple Claude Code wrapper** (`appleAuth.ts`): Discover the Apple wrapper script (`@apple/claude-code/bin/cli.js`) by checking the npm global prefix or resolving the `claude` command. Result is cached after first lookup.
+
+2. **Set `pathToClaudeCodeExecutable`** (`query.ts`): When the Apple wrapper is found, pass it to the SDK via `pathToClaudeCodeExecutable`. This makes the SDK spawn the wrapper as a child process (instead of running in-process), so the Apple wrapper starts its auth proxy and injects all necessary env vars — matching the behavior of the old spawn-based approach.
+
+Also always pass `process.env` to `sdkOptions.env` (previously only set when MCP servers were present), as a baseline for non-Apple environments.
+
+### Files changed
+
+| File | Change |
+|---|---|
+| `packages/happy-cli/src/claude/sdk/appleAuth.ts` | **New file.** Discovers Apple Claude Code wrapper path from npm global prefix or `which claude` |
+| `packages/happy-cli/src/claude/sdk/query.ts` | Always set `sdkOptions.env`; set `pathToClaudeCodeExecutable` when Apple wrapper is found |
+| `packages/happy-cli/src/claude/sdk/types.ts` | Added `env` field to `QueryOptions` |
