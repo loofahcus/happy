@@ -55,3 +55,25 @@ The repo already uses idempotent `.cjs` patch scripts under `patches/` applied v
 
 - Long-term fix is an upstream PR to `expo/expo`; this patch is a local workaround.
 - Only the web HMR path is affected — native iOS/Android builds use `hmrUtils.native.ts` and are untouched.
+
+---
+
+## 2. MCP SDK Bump Trips TS2589 in `registerTool` Generics
+
+### Problem
+
+After `@modelcontextprotocol/sdk` was bumped to 1.29.0, `tsc --noEmit` in the CLI build script started failing with `TS2589: Type instantiation is excessively deep and possibly infinite`. The error fires inside `startHappyServer.ts` where `registerTool` is invoked with an inferred generic. Runtime behaviour is unaffected — only the typecheck step is broken, which gates `pnpm build`.
+
+### Root Cause
+
+The new MCP SDK overload signature for `registerTool` exposes a recursive Zod-derived inference path that TypeScript cannot evaluate within its instantiation depth limit.
+
+### Fix
+
+A targeted `// @ts-expect-error TS2589` on the single failing call. This is a known third-party generics false positive — narrower than `// @ts-ignore`, and `tsc` will surface it again the moment the SDK fixes its types.
+
+### Files changed
+
+| File | Change |
+|---|---|
+| `packages/happy-cli/src/claude/utils/startHappyServer.ts` | Single-line `@ts-expect-error TS2589` above the offending `registerTool` call. |

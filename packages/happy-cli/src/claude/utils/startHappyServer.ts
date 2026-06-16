@@ -21,6 +21,7 @@ function createMcpServer(handler: (title: string) => Promise<{ success: boolean;
         version: "1.0.0",
     });
 
+    // @ts-expect-error MCP SDK 1.29 registerTool generics blow TS instantiation depth (TS2589); runtime is fine.
     mcp.registerTool('change_title', {
         description: 'Change the title of the current chat session',
         title: 'Change Chat Title',
