@@ -273,3 +273,35 @@ All three deployable units need updates: CLI (daemon), server, and app.
 - Port of fork commits `8862681a` (terminal) and `d17a975e` (I/O ordering). The former included massive SessionView/AgentInput rewrites (6000+ LOC) that were mostly reformatting — we integrated surgically on the current baseline instead.
 - `node-pty` is a native module requiring build tools (python3/make/g++) — the `Dockerfile.webapp` may need Alpine deps added if building in Docker (see commit `5d992d7a`).
 - Terminal toggle button is web-only (native doesn't have xterm.js).
+
+---
+
+## 6. Copy Markdown Source via Right-Click on Web
+
+### Problem
+
+The "copy full markdown source" feature (gated behind the `markdownCopyV2` local setting) only works on native (iOS/Android): a long-press opens the `/text-selection` modal. Web had no equivalent trigger — the web branch simply returned the plain content with no gesture and no context-menu handler — so web users could not copy the raw markdown, only the browser-native selection of the *rendered* text.
+
+### Design
+
+Add a web-only right-click (context menu) handler to `MarkdownView` that copies the full markdown source straight to the clipboard.
+
+| Aspect | Behavior |
+|---|---|
+| Trigger | `onContextMenu` (right-click) on the markdown container, web only |
+| Action | `Clipboard.setStringAsync(props.markdown)` → success/failure `Modal.alert` (reuses `textSelection.textCopied` / `textSelection.failedToCopy`) |
+| Selection avoidance | If `window.getSelection()` is non-empty, the handler bails out and lets the browser's native menu appear, so users can still copy just their selected portion |
+| Gating | Kept behind the existing `markdownCopyV2` local setting, consistent with the native long-press flow (per-device setting; must be enabled on web) |
+
+Native long-press behavior is untouched. `onContextMenu` is a web-only DOM prop forwarded by react-native-web, passed via an `as any` spread to avoid the RN `View` type not declaring it.
+
+### Files changed
+
+| File | Change |
+|---|---|
+| `packages/happy-app/sources/components/markdown/MarkdownView.tsx` | Adds `copyMarkdownToClipboard` callback; the `Platform.OS === 'web'` branch (still after the `markdownCopyV2` check) now wraps content in a `View` with an `onContextMenu` handler that copies the source when there is no active text selection. |
+
+### Notes
+
+- `markdownCopyV2` is a **per-device** `useLocalSetting` (default off) — it does not sync from iOS, so it must be toggled on in the web app's settings for the right-click to activate.
+- Web is a static SPA export (`web.output: "single"`); shipping this only requires rebuilding/redeploying the web bundle — no CLI or server changes.

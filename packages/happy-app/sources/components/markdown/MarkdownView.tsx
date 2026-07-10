@@ -57,6 +57,19 @@ export const MarkdownView = React.memo((props: {
             Modal.alert('Error', 'Failed to open text selection. Please try again.');
         }
     }, [props.markdown, router]);
+
+    // Web: copy the full markdown source directly to the clipboard (triggered
+    // by right-click / context menu). Native platforms use the long-press
+    // modal flow above instead.
+    const copyMarkdownToClipboard = React.useCallback(async () => {
+        try {
+            await Clipboard.setStringAsync(props.markdown);
+            Modal.alert(t('textSelection.textCopied'));
+        } catch (error) {
+            Modal.alert(t('common.error'), t('textSelection.failedToCopy'));
+        }
+    }, [props.markdown]);
+
     const renderContent = () => {
         return (
             <View style={{ width: '100%' }}>
@@ -92,11 +105,30 @@ export const MarkdownView = React.memo((props: {
     if (!markdownCopyV2) {
         return renderContent();
     }
-    
+
     if (Platform.OS === 'web') {
-        return renderContent();
+        // On web, right-click (context menu) copies the full markdown source.
+        // When the user has an active text selection we leave the native
+        // browser menu alone so they can still copy just the selected portion.
+        const handleContextMenu = (e: any) => {
+            const selection = typeof window !== 'undefined'
+                ? (window.getSelection?.()?.toString() ?? '')
+                : '';
+            if (selection.trim().length > 0) {
+                return;
+            }
+            e?.preventDefault?.();
+            void copyMarkdownToClipboard();
+        };
+        // onContextMenu is a web-only DOM prop forwarded by react-native-web.
+        const webProps = { onContextMenu: handleContextMenu } as any;
+        return (
+            <View style={{ width: '100%' }} {...webProps}>
+                {renderContent()}
+            </View>
+        );
     }
-    
+
     // Use GestureDetector with LongPress gesture - it doesn't block pan gestures
     // so horizontal scrolling in code blocks and tables still works
     const longPressGesture = Gesture.LongPress()
