@@ -383,3 +383,41 @@ Also always pass `process.env` to `sdkOptions.env` (previously only set when MCP
 | `packages/happy-cli/src/claude/sdk/appleAuth.ts` | **New file.** Discovers Apple Claude Code wrapper path from npm global prefix or `which claude` |
 | `packages/happy-cli/src/claude/sdk/query.ts` | Always set `sdkOptions.env`; set `pathToClaudeCodeExecutable` when Apple wrapper is found |
 | `packages/happy-cli/src/claude/sdk/types.ts` | Added `env` field to `QueryOptions` |
+
+## 12. Web Right-Click Markdown Copy Silently Unreachable
+
+### Symptom
+
+Right-clicking a message in the web app no longer copies the markdown source. Nothing happens — the browser's own context menu appears as if the feature were never built.
+
+### Root cause
+
+The handler was gated on `markdownCopyV2`, and after the upstream rebase there is no way to turn that on:
+
+1. It is a **per-device** `useLocalSetting`, default `false` — it does not sync from another device where it may have been enabled.
+2. Its toggle lived in `settings/features.tsx`, which upstream **deleted** when it consolidated settings (`c82ef72f`, `e34e5922`).
+3. The only surviving toggle is on the developer screen, and `SettingsView.tsx` renders the entry to it behind `__DEV__ || devModeEnabled`. On a production web build that is unreachable.
+
+So the gate was permanently false. Our own commit chose that gate, so this is a self-inflicted regression exposed by the rebase, not an upstream removal.
+
+### Fix
+
+Web takes the right-click handler unconditionally, and the `markdownCopyV2` gate now applies only to the native long-press modal it was written for.
+
+The gate was wrong on the merits too, which is why removing it rather than restoring a toggle is the right call. `markdownCopyV2` means "replace native paragraph selection with a long-press modal" — a trade that only exists on native. On web:
+
+- `selectable` is already `Platform.OS === 'web' || …`, so native text selection is never disabled there;
+- the handler returns early whenever `window.getSelection()` is non-empty, leaving the browser's menu alone.
+
+It therefore cannot take anything away from ordinary selection copying. There is nothing to opt into, so there is no reason to ask.
+
+### Files changed
+
+| File | Change |
+|---|---|
+| `packages/happy-app/sources/components/markdown/MarkdownView.tsx` | Web branch moved above the `markdownCopyV2` check; that check, plus `externalCopyHandler`, now guards only the native long-press path. |
+
+### Notes
+
+- Native behaviour is unchanged: the long-press modal still requires `markdownCopyV2`, and a parent that owns copy (`LongPressCopyable`) still suppresses it so only one gesture fires.
+- The lesson worth keeping: gating a feature on a default-off setting is only safe while a reachable toggle exists. Upstream deleting the screen turned an opt-in into dead code with no test or type error to show for it.

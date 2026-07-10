@@ -62,6 +62,19 @@ export const MarkdownView = React.memo((props: {
             Modal.alert('Error', 'Failed to open text selection. Please try again.');
         }
     }, [props.markdown, router]);
+
+    // Web: copy the full markdown source directly to the clipboard (triggered
+    // by right-click / context menu). Native platforms use the long-press
+    // modal flow above instead.
+    const copyMarkdownToClipboard = React.useCallback(async () => {
+        try {
+            await Clipboard.setStringAsync(props.markdown);
+            Modal.alert(t('textSelection.textCopied'));
+        } catch (error) {
+            Modal.alert(t('common.error'), t('textSelection.failedToCopy'));
+        }
+    }, [props.markdown]);
+
     const renderContent = () => {
         return (
             <View style={{ width: '100%' }}>
@@ -94,14 +107,50 @@ export const MarkdownView = React.memo((props: {
         );
     }
 
-    if (props.externalCopyHandler || !markdownCopyV2) {
-        return renderContent();
-    }
-    
+    // Web takes the right-click handler unconditionally.
+    //
+    // It used to sit behind `markdownCopyV2`, which broke the feature outright:
+    // that setting is a per-device local setting defaulting to false, its only
+    // toggle lived in the settings Features screen, and upstream deleted that
+    // screen — the surviving toggle is on the developer screen, reachable only
+    // under `__DEV__ || devModeEnabled`. So on a production web build there was
+    // no way to turn it on.
+    //
+    // Gating it there was wrong anyway. `markdownCopyV2` means "replace native
+    // paragraph selection with a long-press modal", which is a native-only
+    // trade: on web `selectable` stays true regardless (see above), and the
+    // handler below bails out whenever there is an active selection. It cannot
+    // take anything away from normal selection copying, so there is nothing to
+    // opt into.
     if (Platform.OS === 'web') {
+        // Right-click (context menu) copies the full markdown source. With an
+        // active text selection we leave the browser's own menu alone so the
+        // user can still copy just the selected portion.
+        const handleContextMenu = (e: any) => {
+            const selection = typeof window !== 'undefined'
+                ? (window.getSelection?.()?.toString() ?? '')
+                : '';
+            if (selection.trim().length > 0) {
+                return;
+            }
+            e?.preventDefault?.();
+            void copyMarkdownToClipboard();
+        };
+        // onContextMenu is a web-only DOM prop forwarded by react-native-web.
+        const webProps = { onContextMenu: handleContextMenu } as any;
+        return (
+            <View style={{ width: '100%' }} {...webProps}>
+                {renderContent()}
+            </View>
+        );
+    }
+
+    // Native: the long-press modal is opt-in, and the parent owning copy
+    // (LongPressCopyable) suppresses it so only one gesture fires.
+    if (!markdownCopyV2 || props.externalCopyHandler) {
         return renderContent();
     }
-    
+
     // Use GestureDetector with LongPress gesture - it doesn't block pan gestures
     // so horizontal scrolling in code blocks and tables still works
     const longPressGesture = Gesture.LongPress()
