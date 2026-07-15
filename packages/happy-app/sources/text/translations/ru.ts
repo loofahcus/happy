@@ -284,6 +284,9 @@ export const ru: TranslationStructure = {
     },
 
     newSession: {
+        customModelTitle: 'Пользовательская модель',
+        customModelDescription: 'Введите имя модели для этой сессии.',
+        customModelPlaceholder: 'напр. claude-opus-4-8',
         title: 'Начать новую сессию',
         machineOffline: 'Машина недоступна',
         switchMachinesHint: '• Переключите машину, нажав на неё выше',

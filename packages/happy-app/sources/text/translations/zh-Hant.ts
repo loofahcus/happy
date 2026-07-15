@@ -298,6 +298,9 @@ export const zhHant: TranslationStructure = {
     },
 
     newSession: {
+        customModelTitle: '自訂模型',
+        customModelDescription: '輸入用於此工作階段的模型名稱。',
+        customModelPlaceholder: '例如 claude-opus-4-8',
         title: '開始新工作階段',
         machineOffline: '裝置離線',
         switchMachinesHint: '• 點擊上方的裝置來切換裝置',

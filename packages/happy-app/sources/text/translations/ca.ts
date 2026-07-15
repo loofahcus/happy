@@ -298,6 +298,9 @@ export const ca: TranslationStructure = {
     },
 
     newSession: {
+        customModelTitle: 'Model personalitzat',
+        customModelDescription: 'Introdueix el nom d’un model per a aquesta sessió.',
+        customModelPlaceholder: 'p. ex. claude-opus-4-8',
         title: 'Iniciar nova sessió',
         machineOffline: 'La màquina està fora de línia',
         switchMachinesHint: '• Canvia de màquina fent clic a la màquina de dalt',

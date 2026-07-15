@@ -299,6 +299,9 @@ export const zhHans: TranslationStructure = {
     },
 
     newSession: {
+        customModelTitle: '自定义模型',
+        customModelDescription: '输入用于此会话的模型名称。',
+        customModelPlaceholder: '例如 claude-opus-4-8',
         title: '开始新会话',
         machineOffline: '设备离线',
         switchMachinesHint: '• 点击上方的设备来切换设备',

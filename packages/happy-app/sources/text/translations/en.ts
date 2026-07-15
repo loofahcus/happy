@@ -312,6 +312,9 @@ export const en: TranslationStructure = {
     },
 
     newSession: {
+        customModelTitle: 'Custom Model',
+        customModelDescription: 'Enter a model name to use for this session.',
+        customModelPlaceholder: 'e.g. claude-opus-4-8',
         title: 'Start New Session',
         machineOffline: 'Machine is offline',
         switchMachinesHint: '• Switch machines by clicking on the machine above',

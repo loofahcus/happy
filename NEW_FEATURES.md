@@ -305,3 +305,35 @@ Native long-press behavior is untouched. `onContextMenu` is a web-only DOM prop 
 
 - `markdownCopyV2` is a **per-device** `useLocalSetting` (default off) — it does not sync from iOS, so it must be toggled on in the web app's settings for the right-click to activate.
 - Web is a static SPA export (`web.output: "single"`); shipping this only requires rebuilding/redeploying the web bundle — no CLI or server changes.
+
+---
+
+## 7. Custom Model Names in the Model Picker
+
+### Problem
+
+Upstream persists and restores the selected model + effort per session (via `useNewSessionDraft` + `findPreferredModeIndex`), but only for models that appear in the hardcoded list (`getHardcodedModelModes` / `getAvailableModels`). There is no way to point a session at an arbitrary model string (e.g. a dated snapshot like `claude-opus-4-8`, a `[1m]` variant, or an internal alias), and a persisted custom name could never be restored because `findPreferredModeIndex` / `resolveCurrentOption` can only match keys present in the list.
+
+### Design
+
+Add a small, self-contained helper set to `modelModeOptions.ts`:
+
+- `CUSTOM_MODEL_KEY` (`'__custom__'`) — the sentinel key for the "custom…" row.
+- `withCustomModelOption(models, currentKey)` — returns a new array that (a) prepends a synthetic entry for `currentKey` when it isn't already in the list, so a persisted custom name shows up as the selected row, and (b) always appends the `custom…` sentinel so the user can enter a new name. Pure/immutable — it copies the input.
+
+Both model pickers are augmented through this helper:
+
+- **New-session screen (`new/index.tsx`)** — a `customModelName` state feeds `withCustomModelOption`. Selecting `custom…` opens `Modal.prompt`; the entered name is stored in the draft (`draft.setModelMode`) so upstream's existing restore path picks it up. A mount-once effect re-injects a persisted custom name from the draft (guarded by a ref) so `findPreferredModeIndex` can match it. Picking a real model afterwards drops the synthetic row. `showModel` is computed from the **base** list so the picker's visibility is unchanged.
+- **Active session (`SessionView.tsx` → `SessionStatusBar` model menu)** — `availableModels` is wrapped with `withCustomModelOption(..., session.modelMode)`, and `updateModelMode` prompts for a name when the `custom…` row is chosen, then persists it via `sessionSetAgentModes`.
+
+### Notes / deviations
+
+- Replaces the custom-model portion of fork commit `20de6ad1` (the rest of that commit — Context HUD, model badge, usage telemetry, dynamic context window — is now provided by upstream `#1463` / `#1561` and was dropped).
+- Subsumes fork commit `42fab385` ("persist custom model and effort selection"): upstream already persists/restores model + effort for listed models, so only the custom-name gap remained, which this section closes.
+
+### Files changed
+
+- `packages/happy-app/sources/components/modelModeOptions.ts` — `CUSTOM_MODEL_KEY`, `withCustomModelOption`.
+- `packages/happy-app/sources/app/(app)/new/index.tsx` — custom option + prompt + persisted-name restore in the new-session picker.
+- `packages/happy-app/sources/-session/SessionView.tsx` — custom option + prompt in the active-session model menu.
+- `packages/happy-app/sources/text/_default.ts` + all `translations/*.ts` — `newSession.customModel{Title,Description,Placeholder}`.

@@ -307,6 +307,34 @@ export function findOptionByKey<T extends ModeOption>(options: T[], key: string 
     return options.find((option) => option.key === key) ?? null;
 }
 
+export const CUSTOM_MODEL_KEY = '__custom__';
+
+const CUSTOM_MODEL_OPTION: ModelMode = {
+    key: CUSTOM_MODEL_KEY,
+    name: 'custom…',
+    description: 'enter model name',
+};
+
+// Augments a list of model options for the picker:
+//  - if currentKey isn't already in the list, prepend it as a synthetic entry
+//    so a persisted custom name shows up as the selected row;
+//  - always append the "custom…" sentinel so the user can enter a new name.
+export function withCustomModelOption(
+    models: ModelMode[],
+    currentKey: string | null | undefined,
+): ModelMode[] {
+    const result = [...models];
+    if (
+        currentKey
+        && currentKey !== CUSTOM_MODEL_KEY
+        && !models.some((m) => m.key === currentKey)
+    ) {
+        result.unshift({ key: currentKey, name: currentKey, description: 'custom' });
+    }
+    result.push(CUSTOM_MODEL_OPTION);
+    return result;
+}
+
 export function resolveCurrentOption<T extends ModeOption>(
     options: T[],
     preferredKeys: Array<string | null | undefined>,

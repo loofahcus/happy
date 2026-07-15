@@ -299,6 +299,9 @@ export const ja: TranslationStructure = {
     },
 
     newSession: {
+        customModelTitle: 'カスタムモデル',
+        customModelDescription: 'このセッションで使用するモデル名を入力してください。',
+        customModelPlaceholder: '例: claude-opus-4-8',
         title: '新しいセッションを開始',
         machineOffline: 'マシンがオフラインです',
         switchMachinesHint: '• 上のマシンをクリックしてマシンを切り替えてください',

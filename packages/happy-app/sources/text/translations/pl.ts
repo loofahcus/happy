@@ -315,6 +315,9 @@ export const pl: TranslationStructure = {
     },
 
     newSession: {
+        customModelTitle: 'Model niestandardowy',
+        customModelDescription: 'Wprowadź nazwę modelu dla tej sesji.',
+        customModelPlaceholder: 'np. claude-opus-4-8',
         title: 'Rozpocznij nową sesję',
         machineOffline: 'Maszyna jest offline',
         switchMachinesHint: '• Przełącz maszynę, klikając na nią powyżej',

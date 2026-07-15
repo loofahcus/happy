@@ -52,6 +52,8 @@ import {
     getHardcodedModelModes,
     getEffortLevelsForModel,
     getSupportsWorktree,
+    withCustomModelOption,
+    CUSTOM_MODEL_KEY,
     type PermissionMode,
     type ModelMode,
     type EffortLevel,
@@ -780,6 +782,7 @@ function NewSessionScreen() {
     // Local-only UI state (not persisted)
     const [permissionIndex, setPermissionIndex] = React.useState(0);
     const [modelIndex, setModelIndex] = React.useState(0);
+    const [customModelName, setCustomModelName] = React.useState<string | null>(null);
     const [effortIndex, setEffortIndex] = React.useState(0);
     const [isSpawning, setIsSpawning] = React.useState(false);
     const [activePicker, setActivePicker] = React.useState<PickerType | null>(null);
@@ -923,10 +926,33 @@ function NewSessionScreen() {
         () => getHardcodedPermissionModes(selectedAgent, t),
         [selectedAgent],
     );
-    const modelModes = React.useMemo<ModelMode[]>(
+    const baseModelModes = React.useMemo<ModelMode[]>(
         () => getHardcodedModelModes(selectedAgent, t),
         [selectedAgent],
     );
+    // Augment with the persisted custom name (if any) plus the "custom…" sentinel.
+    const modelModes = React.useMemo<ModelMode[]>(
+        () => withCustomModelOption(baseModelModes, customModelName),
+        [baseModelModes, customModelName],
+    );
+
+    // Restore a persisted custom model name (one absent from the hardcoded list)
+    // once on mount. findPreferredModeIndex can only match keys present in
+    // modelModes, so the custom entry must be re-injected before it runs.
+    const customModelRestoredRef = React.useRef(false);
+    React.useEffect(() => {
+        if (customModelRestoredRef.current) return;
+        customModelRestoredRef.current = true;
+        const persisted = draft.modelMode;
+        if (
+            persisted
+            && persisted !== 'default'
+            && persisted !== CUSTOM_MODEL_KEY
+            && !baseModelModes.some((m) => m.key === persisted)
+        ) {
+            setCustomModelName(persisted);
+        }
+    }, [draft.modelMode, baseModelModes]);
 
     const currentModel = modelModes[modelIndex] ?? modelModes[0];
     const currentModelKey = currentModel?.key ?? 'default';
@@ -940,7 +966,7 @@ function NewSessionScreen() {
     ), [agentDefaultOverrides, selectedAgent]);
 
     const supportsWorktree = getSupportsWorktree(selectedAgent);
-    const showModel = modelModes.length > 1;
+    const showModel = baseModelModes.length > 1;
     const showEffort = effortLevels.length > 0;
     const showPermission = permissionModes.length > 1;
 
@@ -1158,7 +1184,7 @@ function NewSessionScreen() {
         }
     }, [composerSettingsPage, currentEffort?.key, currentModelKey, currentPermission?.key, effortLevels, modelModes, permissionModes, selectedAgent]);
 
-    const handlePickerSelect = React.useCallback((key: string) => {
+    const handlePickerSelect = React.useCallback(async (key: string) => {
         switch (activePicker) {
             case 'machine':
                 setSelectedMachineId(key);
@@ -1172,10 +1198,32 @@ function NewSessionScreen() {
                 }
                 break;
             case 'model': {
+                if (key === CUSTOM_MODEL_KEY) {
+                    const name = await Modal.prompt(
+                        t('newSession.customModelTitle'),
+                        t('newSession.customModelDescription'),
+                        {
+                            defaultValue: customModelName ?? '',
+                            placeholder: t('newSession.customModelPlaceholder'),
+                            cancelText: t('common.cancel'),
+                            confirmText: t('common.ok'),
+                        },
+                    );
+                    if (name && name.trim()) {
+                        const trimmed = name.trim();
+                        setCustomModelName(trimmed);
+                        draft.setModelMode(trimmed);
+                    }
+                    break;
+                }
                 const next = modelModes.findIndex((mode) => mode.key === key);
                 if (next >= 0) {
                     setModelIndex(next);
                     draft.setModelMode(modelModes[next]?.key ?? 'default');
+                    // Picked a real model — drop the synthetic custom row.
+                    if (customModelName && key !== customModelName) {
+                        setCustomModelName(null);
+                    }
                 }
                 break;
             }
@@ -1204,6 +1252,7 @@ function NewSessionScreen() {
         draft.setEffortLevel,
         draft.setModelMode,
         draft.setPermissionMode,
+        customModelName,
         effortLevels,
         modelModes,
         permissionModes,

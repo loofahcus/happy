@@ -296,6 +296,9 @@ export const it: TranslationStructure = {
     },
 
     newSession: {
+        customModelTitle: 'Modello personalizzato',
+        customModelDescription: 'Inserisci il nome di un modello per questa sessione.',
+        customModelPlaceholder: 'es. claude-opus-4-8',
         title: 'Avvia nuova sessione',
         machineOffline: 'La macchina è offline',
         switchMachinesHint: '• Cambia macchina cliccando sulla macchina sopra',

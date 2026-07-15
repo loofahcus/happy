@@ -10,6 +10,8 @@ import { layout } from '@/components/layout';
 import {
     getAvailableModels,
     getAvailablePermissionModes,
+    withCustomModelOption,
+    CUSTOM_MODEL_KEY,
     getEffortLevelsForModel,
     getRigCurrentModelOptionKey,
     resolveCurrentOption,
@@ -726,7 +728,7 @@ export function SessionViewLoaded({
     const flavor = session.metadata?.flavor;
     const isRig = isRigMetadata(session.metadata);
     const availableModels = React.useMemo(() => (
-        getAvailableModels(flavor, session.metadata, t, session.modelMode)
+        withCustomModelOption(getAvailableModels(flavor, session.metadata, t, session.modelMode), session.modelMode)
     ), [flavor, session.metadata, session.modelMode]);
     const availableModes = React.useMemo(() => (
         getAvailablePermissionModes(flavor, session.metadata, t, session.permissionMode)
@@ -814,16 +816,38 @@ export function SessionViewLoaded({
         sessionSetAgentModes(sessionId, { permissionMode: mode.key });
     }, [sessionId]);
 
-    const updateModelMode = React.useCallback((mode: ModelMode) => {
-        const nextEffortLevels = getEffortLevelsForModel(flavor, mode.key, session.metadata);
-        const currentEffortSupported = session.effortLevel
-            ? nextEffortLevels.some((level) => level.key === session.effortLevel)
-            : true;
-        sessionSetAgentModes(sessionId, {
-            modelMode: mode.key,
-            ...(!currentEffortSupported ? { effortLevel: mode.defaultThinkingLevel ?? null } : {}),
-        });
-    }, [sessionId, flavor, session.metadata, session.effortLevel]);
+    const updateModelMode = React.useCallback(async (mode: ModelMode) => {
+        // A model switch can invalidate the current effort pick; fall back to
+        // the new model's default when it does. Shared by both the normal and
+        // the custom-name path so a custom model reconciles effort too.
+        const applyModelMode = (modelMode: string, defaultThinkingLevel?: string | null) => {
+            const nextEffortLevels = getEffortLevelsForModel(flavor, modelMode, session.metadata);
+            const currentEffortSupported = session.effortLevel
+                ? nextEffortLevels.some((level) => level.key === session.effortLevel)
+                : true;
+            sessionSetAgentModes(sessionId, {
+                modelMode,
+                ...(!currentEffortSupported ? { effortLevel: defaultThinkingLevel ?? null } : {}),
+            });
+        };
+        if (mode.key === CUSTOM_MODEL_KEY) {
+            const name = await Modal.prompt(
+                t('newSession.customModelTitle'),
+                t('newSession.customModelDescription'),
+                {
+                    defaultValue: session.modelMode ?? '',
+                    placeholder: t('newSession.customModelPlaceholder'),
+                    cancelText: t('common.cancel'),
+                    confirmText: t('common.ok'),
+                },
+            );
+            if (name && name.trim()) {
+                applyModelMode(name.trim(), mode.defaultThinkingLevel);
+            }
+            return;
+        }
+        applyModelMode(mode.key, mode.defaultThinkingLevel);
+    }, [sessionId, flavor, session.metadata, session.effortLevel, session.modelMode]);
 
     const updateEffortLevel = React.useCallback((level: EffortLevel) => {
         sessionSetAgentModes(sessionId, { effortLevel: level.key });
