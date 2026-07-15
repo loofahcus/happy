@@ -243,6 +243,7 @@ Add `vi.mock('@/modules/terminal/terminalHandler', ...)` with no-op `registerTer
 - This file wasn't touched by any rebase conflict — it applied cleanly, so nothing flagged it during conflict resolution. It only surfaced by running the package's *full* test suite as a separate verification pass.
 - The message/session cache (`NEW_FEATURES.md` section 3) has the same class of gap in four other sync test files — see section 5.
 
+---
 
 ## 9. Terminal Input Failures Left No Trace
 
@@ -384,7 +385,7 @@ Also always pass `process.env` to `sdkOptions.env` (previously only set when MCP
 | `packages/happy-cli/src/claude/sdk/query.ts` | Always set `sdkOptions.env`; set `pathToClaudeCodeExecutable` when Apple wrapper is found |
 | `packages/happy-cli/src/claude/sdk/types.ts` | Added `env` field to `QueryOptions` |
 
-## 12. Web Right-Click Markdown Copy Silently Unreachable
+## 13. Web Right-Click Markdown Copy Silently Unreachable
 
 ### Symptom
 
@@ -421,3 +422,67 @@ It therefore cannot take anything away from ordinary selection copying. There is
 
 - Native behaviour is unchanged: the long-press modal still requires `markdownCopyV2`, and a parent that owns copy (`LongPressCopyable`) still suppresses it so only one gesture fires.
 - The lesson worth keeping: gating a feature on a default-off setting is only safe while a reachable toggle exists. Upstream deleting the screen turned an opt-in into dead code with no test or type error to show for it.
+
+---
+
+## 14. Silent Session Stalls: 429 / API Errors Not Surfaced
+
+### Symptom
+
+After redeploying the latest build, sessions would sometimes stop mid-turn with **no error shown** in the app — the turn simply appeared to freeze or end. Older builds used to print the 429 (rate limit) error.
+
+### Root cause
+
+The bundled `@anthropic-ai/claude-agent-sdk` (0.3.167) surfaces API failures through two message shapes that `claudeRemote.ts` never handled:
+
+1. **`system` / `api_retry`** (`SDKAPIRetryMessage`) — emitted before each backoff when a request fails with a retryable error (`error_status: 429`, `error: 'rate_limit'`, `attempt`/`max_retries`/`retry_delay_ms`). The message loop only handled `system` + `subtype: 'init'`, so every retry was dropped.
+2. **`result`** (`SDKResultError` / `SDKResultSuccess` with `is_error: true`) — the terminal result once retries are exhausted. `SDKToLogConverter`'s `case 'result'` is an intentional no-op, and the result handler only called `onReady()` — it never inspected `is_error` / `api_error_status` / `subtype`. This is exactly the "runs halfway and stops with no error" case.
+
+Both paths were swallowed, so a 429 (or billing / overloaded / server error) ended the turn silently.
+
+### Fix
+
+In `packages/happy-cli/src/claude/claudeRemote.ts`, surface both paths through the existing `onCompletionEvent` channel (which the launcher forwards as `sendSessionEvent({ type: 'message' })`, rendering as a visible message in the app — the same channel the transcript-missing warning uses):
+
+- **Transient retries:** handle `system` + `subtype: 'api_retry'` → `⏳ rate limit (429) [rate_limit] — retrying 2/10 in 8s…`
+- **Terminal errors:** in the `result` handler, when `is_error || subtype !== 'success'` → `⚠️ Turn stopped — rate limit (429). Please try again.` (or the error subtype + `errors[]` for non-API failures like `error_max_turns`).
+
+A `labelApiStatus()` helper maps HTTP statuses to short labels, calling out **429 (rate limit)** explicitly while still surfacing 401/403/400/5xx/overloaded and any other status generically — so it is not limited to 429.
+
+### Files changed
+
+| File | Change |
+|---|---|
+| `packages/happy-cli/src/claude/claudeRemote.ts` | Added `labelApiStatus()` helper; handle `system/api_retry`; detect `is_error`/error-subtype results and emit a clear completion event |
+| `packages/happy-cli/src/claude/sdk/types.ts` | Re-export `SDKAPIRetryMessage` from the SDK |
+| `packages/happy-cli/src/claude/sdk/index.ts` | Re-export `SDKAPIRetryMessage` |
+| `packages/happy-cli/src/claude/claudeRemote.test.ts` | Tests for api_retry surfacing, terminal 429 result, and error-subtype result |
+
+---
+
+## 15. Provider-Auth Detection and 429/Error Surfacing Fought Over the Same Result Message
+
+### Problem
+
+Two features that never coexisted before this rebase — our own `1e034c04` ("surface 429 and API errors instead of stalling silently") and upstream's `297004a1` ("explain expired Claude provider login") — both inspect every `result` message in `claudeRemote.ts`'s response loop. Combined, an auth-failure result fired `onCompletionEvent` twice, and an exhausted-429 result (`{ type: 'result', subtype: 'success', is_error: true, api_error_status: 429 }`, no `result` text) crashed instead of surfacing anything.
+
+### Root Cause
+
+1. `claudeProviderAuthMessage` (`providerAuth.ts`) assumed a `success`-subtype error result always carries `result` text: `const errors = message.subtype === 'success' ? [message.result] : message.errors;`. An exhausted-429 result has no `result` field, so `errors` became `[undefined]`, and `isOAuthExpired(undefined)` crashed calling `.trim()` on it.
+2. `claudeRemote.ts`'s generic "Turn stopped" error banner fired unconditionally for any `is_error` result — including ones `claudeProviderAuthMessage` had already classified and reported as an auth failure earlier in the same loop body, firing `onCompletionEvent` twice for one terminal result.
+
+### Fix
+
+- `claudeProviderAuthMessage` now filters both branches (`[message.result]` and `message.errors`) down to actual strings before testing them, instead of assuming either shape.
+- The generic error banner is now skipped whenever `claudeProviderAuthMessage` already returned a truthy `authMessage` for the same message (`if (!authMessage && (resultMsg.is_error || ...))`).
+
+### Files changed
+
+| File | Change |
+|---|---|
+| `packages/happy-cli/src/claude/utils/providerAuth.ts` | Filters `errors` to strings before calling `isOAuthExpired` on each. |
+| `packages/happy-cli/src/claude/claudeRemote.ts` | Generic error banner gated on `!authMessage`. |
+
+### Notes
+
+- Caught by running this package's *full* test suite as a separate verification pass after the rebase's conflicts were all resolved — neither feature's own conflict-resolution touched the other's code path, so nothing flagged the interaction earlier.

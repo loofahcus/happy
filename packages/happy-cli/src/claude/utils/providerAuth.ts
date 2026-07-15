@@ -24,8 +24,12 @@ export function claudeProviderAuthMessage(message: SDKMessage): string | null {
         return expired ? CLAUDE_LOGIN_EXPIRED_MESSAGE : PROVIDER_AUTH_MESSAGE;
     }
     if (message.type === 'result' && message.is_error) {
-        const errors = message.subtype === 'success' ? [message.result] : message.errors;
-        return errors.some(isOAuthExpired) ? CLAUDE_LOGIN_EXPIRED_MESSAGE : null;
+        // A `success`-subtype error result isn't guaranteed to carry `result`
+        // text (e.g. an exhausted-429 retry reports only `api_error_status`),
+        // and an error-subtype result isn't guaranteed to carry `errors`.
+        // Filter to strings before testing rather than assuming either shape.
+        const errors = (message.subtype === 'success' ? [message.result] : message.errors) ?? [];
+        return errors.filter((e): e is string => typeof e === 'string').some(isOAuthExpired) ? CLAUDE_LOGIN_EXPIRED_MESSAGE : null;
     }
     return null;
 }

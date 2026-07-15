@@ -1,5 +1,5 @@
 import { EnhancedMode } from "./loop";
-import { query, type CanCallToolOptions, type QueryOptions, type SDKMessage, type SDKSystemMessage, AbortError, SDKUserMessage } from '@/claude/sdk'
+import { query, type CanCallToolOptions, type QueryOptions, type SDKMessage, type SDKSystemMessage, type SDKResultMessage, type SDKAPIRetryMessage, AbortError, SDKUserMessage } from '@/claude/sdk'
 import type { MessageParam } from '@anthropic-ai/sdk/resources'
 import { mapToClaudeMode } from "./utils/permissionMode";
 import { claudeCheckSession } from "./utils/claudeCheckSession";
@@ -17,6 +17,24 @@ import type { UsageLimitWindow } from "@/api/types";
 import { pluginsFromArgs } from './utils/pluginsFromArgs';
 import { claudeProviderAuthMessage } from './utils/providerAuth';
 import { applyFloodgateProjectTokenToEnv } from "@/utils/floodgateProject";
+
+/**
+ * Map an HTTP status from a Claude API failure to a short human label.
+ * 429 (rate limit) is called out explicitly; other common statuses too.
+ */
+function labelApiStatus(status: number | null | undefined): string {
+    switch (status) {
+        case 429: return 'rate limit (429)';
+        case 529: return 'overloaded (529)';
+        case 401:
+        case 403: return `authentication error (${status})`;
+        case 400: return 'invalid request (400)';
+        case 500:
+        case 502:
+        case 503: return `server error (${status})`;
+        default: return status ? `API error (${status})` : 'API error';
+    }
+}
 
 export async function claudeRemote(opts: {
 
@@ -345,6 +363,16 @@ export async function claudeRemote(opts: {
                 }
             }
 
+            // Surface transient API retries (e.g. 429 rate limit) so a stalled
+            // turn is visible in the app rather than appearing frozen. The SDK
+            // emits system/api_retry before each backoff.
+            if (message.type === 'system' && message.subtype === 'api_retry') {
+                const retry = message as SDKAPIRetryMessage;
+                const delaySec = Math.max(1, Math.round(retry.retry_delay_ms / 1000));
+                logger.debug(`[claudeRemote] API retry: ${retry.error_status} ${retry.error} attempt ${retry.attempt}/${retry.max_retries}`);
+                opts.onCompletionEvent?.(`⏳ ${labelApiStatus(retry.error_status)} [${retry.error}] — retrying ${retry.attempt}/${retry.max_retries} in ${delaySec}s…`);
+            }
+
             // Handle result messages
             if (message.type === 'result') {
                 updateThinking(false);
@@ -353,6 +381,22 @@ export async function claudeRemote(opts: {
                 // Fire-and-forget: unavailable for API key / Bedrock / Vertex
                 // sessions and experimental besides, so failures are ignored.
                 scheduleUsageFlush();
+
+                // Surface terminal API/turn errors that would otherwise stop the
+                // turn silently (e.g. exhausted 429 retries, billing, overloaded).
+                // Skip when claudeProviderAuthMessage already classified and
+                // reported this same result as a provider auth failure above —
+                // otherwise an auth-failure result fires onCompletionEvent twice.
+                const resultMsg = message as SDKResultMessage;
+                if (!authMessage && (resultMsg.is_error || resultMsg.subtype !== 'success')) {
+                    const detail = resultMsg.subtype === 'success'
+                        ? labelApiStatus(resultMsg.api_error_status)
+                        : (resultMsg.errors && resultMsg.errors.length > 0
+                            ? `${resultMsg.subtype}: ${resultMsg.errors.join('; ')}`
+                            : resultMsg.subtype);
+                    logger.debug(`[claudeRemote] Turn ended with error: ${detail}`);
+                    opts.onCompletionEvent?.(`⚠️ Turn stopped — ${detail}. Please try again.`);
+                }
 
                 // Send completion messages
                 if (isCompactCommand) {
