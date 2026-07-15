@@ -231,3 +231,38 @@ Also always pass `process.env` to `sdkOptions.env` (previously only set when MCP
 | `packages/happy-cli/src/claude/sdk/appleAuth.ts` | **New file.** Discovers Apple Claude Code wrapper path from npm global prefix or `which claude` |
 | `packages/happy-cli/src/claude/sdk/query.ts` | Always set `sdkOptions.env`; set `pathToClaudeCodeExecutable` when Apple wrapper is found |
 | `packages/happy-cli/src/claude/sdk/types.ts` | Added `env` field to `QueryOptions` |
+
+---
+
+## 8. Silent Session Stalls: 429 / API Errors Not Surfaced
+
+### Symptom
+
+After redeploying the latest build, sessions would sometimes stop mid-turn with **no error shown** in the app — the turn simply appeared to freeze or end. Older builds used to print the 429 (rate limit) error.
+
+### Root cause
+
+The bundled `@anthropic-ai/claude-agent-sdk` (0.3.167) surfaces API failures through two message shapes that `claudeRemote.ts` never handled:
+
+1. **`system` / `api_retry`** (`SDKAPIRetryMessage`) — emitted before each backoff when a request fails with a retryable error (`error_status: 429`, `error: 'rate_limit'`, `attempt`/`max_retries`/`retry_delay_ms`). The message loop only handled `system` + `subtype: 'init'`, so every retry was dropped.
+2. **`result`** (`SDKResultError` / `SDKResultSuccess` with `is_error: true`) — the terminal result once retries are exhausted. `SDKToLogConverter`'s `case 'result'` is an intentional no-op, and the result handler only called `onReady()` — it never inspected `is_error` / `api_error_status` / `subtype`. This is exactly the "runs halfway and stops with no error" case.
+
+Both paths were swallowed, so a 429 (or billing / overloaded / server error) ended the turn silently.
+
+### Fix
+
+In `packages/happy-cli/src/claude/claudeRemote.ts`, surface both paths through the existing `onCompletionEvent` channel (which the launcher forwards as `sendSessionEvent({ type: 'message' })`, rendering as a visible message in the app — the same channel the transcript-missing warning uses):
+
+- **Transient retries:** handle `system` + `subtype: 'api_retry'` → `⏳ rate limit (429) [rate_limit] — retrying 2/10 in 8s…`
+- **Terminal errors:** in the `result` handler, when `is_error || subtype !== 'success'` → `⚠️ Turn stopped — rate limit (429). Please try again.` (or the error subtype + `errors[]` for non-API failures like `error_max_turns`).
+
+A `labelApiStatus()` helper maps HTTP statuses to short labels, calling out **429 (rate limit)** explicitly while still surfacing 401/403/400/5xx/overloaded and any other status generically — so it is not limited to 429.
+
+### Files changed
+
+| File | Change |
+|---|---|
+| `packages/happy-cli/src/claude/claudeRemote.ts` | Added `labelApiStatus()` helper; handle `system/api_retry`; detect `is_error`/error-subtype results and emit a clear completion event |
+| `packages/happy-cli/src/claude/sdk/types.ts` | Re-export `SDKAPIRetryMessage` from the SDK |
+| `packages/happy-cli/src/claude/sdk/index.ts` | Re-export `SDKAPIRetryMessage` |
+| `packages/happy-cli/src/claude/claudeRemote.test.ts` | Tests for api_retry surfacing, terminal 429 result, and error-subtype result |

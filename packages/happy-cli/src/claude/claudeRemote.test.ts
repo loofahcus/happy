@@ -105,4 +105,106 @@ describe('claudeRemote', () => {
             isCompactSummary: true,
         }));
     });
+
+    it('surfaces a 429 api_retry as a visible completion event', async () => {
+        vi.mocked(query).mockReturnValue({
+            setPermissionMode: vi.fn(),
+            async *[Symbol.asyncIterator]() {
+                yield {
+                    type: 'system',
+                    subtype: 'api_retry',
+                    attempt: 2,
+                    max_retries: 10,
+                    retry_delay_ms: 8000,
+                    error_status: 429,
+                    error: 'rate_limit',
+                };
+                yield { type: 'result', subtype: 'success', is_error: false };
+            },
+        } as any);
+
+        const events: string[] = [];
+        const onCompletionEvent = vi.fn((m: string) => { events.push(m); });
+        let count = 0;
+
+        await claudeRemote({
+            sessionId: null,
+            path: process.cwd(),
+            allowedTools: [],
+            hookSettingsPath: '/tmp/happy-test-settings.json',
+            nextMessage: async () => { count += 1; return count === 1 ? { message: 'hi', mode } : null; },
+            onReady: vi.fn(),
+            canCallTool: async () => ({ behavior: 'allow' }) as any,
+            isAborted: () => false,
+            onSessionFound: vi.fn(),
+            onThinkingChange: vi.fn(),
+            onMessage: vi.fn(),
+            onCompletionEvent,
+            onSessionReset: vi.fn(),
+        });
+
+        expect(events.some(m => m.includes('rate limit (429)') && m.includes('rate_limit') && m.includes('2/10'))).toBe(true);
+    });
+
+    it('surfaces a terminal is_error result (exhausted 429) as an error event', async () => {
+        vi.mocked(query).mockReturnValue({
+            setPermissionMode: vi.fn(),
+            async *[Symbol.asyncIterator]() {
+                yield { type: 'result', subtype: 'success', is_error: true, api_error_status: 429 };
+            },
+        } as any);
+
+        const events: string[] = [];
+        const onCompletionEvent = vi.fn((m: string) => { events.push(m); });
+        let count = 0;
+
+        await claudeRemote({
+            sessionId: null,
+            path: process.cwd(),
+            allowedTools: [],
+            hookSettingsPath: '/tmp/happy-test-settings.json',
+            nextMessage: async () => { count += 1; return count === 1 ? { message: 'hi', mode } : null; },
+            onReady: vi.fn(),
+            canCallTool: async () => ({ behavior: 'allow' }) as any,
+            isAborted: () => false,
+            onSessionFound: vi.fn(),
+            onThinkingChange: vi.fn(),
+            onMessage: vi.fn(),
+            onCompletionEvent,
+            onSessionReset: vi.fn(),
+        });
+
+        expect(events.some(m => m.includes('Turn stopped') && m.includes('rate limit (429)'))).toBe(true);
+    });
+
+    it('surfaces a terminal error-subtype result (error_max_turns)', async () => {
+        vi.mocked(query).mockReturnValue({
+            setPermissionMode: vi.fn(),
+            async *[Symbol.asyncIterator]() {
+                yield { type: 'result', subtype: 'error_max_turns', is_error: true, errors: ['too many turns'] };
+            },
+        } as any);
+
+        const events: string[] = [];
+        const onCompletionEvent = vi.fn((m: string) => { events.push(m); });
+        let count = 0;
+
+        await claudeRemote({
+            sessionId: null,
+            path: process.cwd(),
+            allowedTools: [],
+            hookSettingsPath: '/tmp/happy-test-settings.json',
+            nextMessage: async () => { count += 1; return count === 1 ? { message: 'hi', mode } : null; },
+            onReady: vi.fn(),
+            canCallTool: async () => ({ behavior: 'allow' }) as any,
+            isAborted: () => false,
+            onSessionFound: vi.fn(),
+            onThinkingChange: vi.fn(),
+            onMessage: vi.fn(),
+            onCompletionEvent,
+            onSessionReset: vi.fn(),
+        });
+
+        expect(events.some(m => m.includes('error_max_turns') && m.includes('too many turns'))).toBe(true);
+    });
 });

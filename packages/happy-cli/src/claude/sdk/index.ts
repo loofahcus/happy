@@ -13,6 +13,7 @@ export type {
     SDKAssistantMessage,
     SDKSystemMessage,
     SDKResultMessage,
+    SDKAPIRetryMessage,
     CanCallToolCallback,
     CanCallToolOptions,
     PermissionResult

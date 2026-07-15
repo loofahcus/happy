@@ -10,6 +10,7 @@ export type {
     SDKAssistantMessage,
     SDKSystemMessage,
     SDKResultMessage,
+    SDKAPIRetryMessage,
     PermissionResult,
     CanUseTool,
 } from '@anthropic-ai/claude-agent-sdk'
