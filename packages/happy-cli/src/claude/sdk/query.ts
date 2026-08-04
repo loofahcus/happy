@@ -3,7 +3,7 @@
  * Maps internal QueryOptions to official SDK Options
  */
 
-import { query as sdkQuery, type Options, type Query } from '@anthropic-ai/claude-agent-sdk'
+import { query as sdkQuery, type Options, type Query, type SdkBeta } from '@anthropic-ai/claude-agent-sdk'
 import type { QueryOptions, QueryPrompt, SDKMessage } from './types'
 import type { SDKUserMessage } from '@anthropic-ai/claude-agent-sdk'
 import { ensureLocalProxyBypass } from '../utils/proxyBypass'
@@ -44,6 +44,7 @@ export function query(params: { prompt: QueryPrompt; options?: QueryOptions }): 
         strictMcpConfig: opts?.strictMcpConfig,
         sessionId: undefined,
         effort: opts?.effort,
+        betas: opts?.betas as SdkBeta[],
     }
 
     // Map abort signal -> AbortController

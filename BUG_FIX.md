@@ -77,3 +77,29 @@ A targeted `// @ts-expect-error TS2589` on the single failing call. This is a kn
 | File | Change |
 |---|---|
 | `packages/happy-cli/src/claude/utils/startHappyServer.ts` | Single-line `@ts-expect-error TS2589` above the offending `registerTool` call. |
+
+---
+
+## 3. 1M Context Window Never Actually Enabled in Remote Mode
+
+### Problem
+
+Opus is natively a 1M-token model, and the `/model` picker also offers explicit `[1m]` variants of other models. But in remote mode the Claude Agent SDK defaults to a 200K window: without the `context-1m-2025-08-07` beta header a `[1m]` selection never actually got 1M, so long sessions auto-compacted prematurely.
+
+### Fix
+
+Thread a `betas` option through the SDK adapter and set the 1M beta when the active model warrants it.
+
+| File | Change |
+|---|---|
+| `packages/happy-cli/src/claude/sdk/types.ts` | Add `betas?: string[]` to `QueryOptions`. |
+| `packages/happy-cli/src/claude/sdk/query.ts` | Import `type SdkBeta`; pass `betas: opts?.betas as SdkBeta[]` into the SDK call. |
+| `packages/happy-cli/src/claude/claudeRemote.ts` | Set `betas: ['context-1m-2025-08-07']` when `initial.mode.model` is an Opus model or contains `[1m]`. Opus is sent the beta explicitly rather than assuming a native 1M window; the header is harmless for models that don't need it. |
+
+### Scope: enablement only, not display
+
+An earlier version of this fix also resolved the window **app-side** for display, because the Anthropic `usage` payload carries no `context_window` and the Claude protocol mapper never synthesised one — so the indicator measured against a hardcoded 200K even on a genuine 1M session. Upstream has since fixed that properly in `#1561`: `sdkToLogConverter` records the real per-model window off `SDKResultMessage.modelUsage` and stamps it onto subsequent usage, and the app hides the indicator until the window is known. That is strictly better than our model-name heuristic, since the same model ID maps to different windows depending on the account. Our display half was dropped in favour of upstream's; only the enablement half — which upstream does not do at all — is kept here.
+
+### Deviation from fork commit `45f41ba5`
+
+The original fork forced 1M for any Opus/Sonnet via `/opus|sonnet/i`; we enable it for Opus and any explicit `[1m]` selection, so standard Sonnet/Haiku stay 200K.

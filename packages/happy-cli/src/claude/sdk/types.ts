@@ -53,6 +53,8 @@ export interface QueryOptions {
      * the SDK silently downgrades it to 'high' on models without it.
      */
     effort?: 'low' | 'medium' | 'high' | 'xhigh' | 'max'
+    /** SDK beta features to enable (e.g., 1M context window) */
+    betas?: string[]
 }
 
 /**

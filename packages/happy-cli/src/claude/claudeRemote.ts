@@ -139,6 +139,12 @@ export async function claudeRemote(opts: {
         canCallTool: (toolName: string, input: unknown, options: CanCallToolOptions) => opts.canCallTool(toolName, input, mode, options),
         abort: opts.signal,
         settingsPath: opts.hookSettingsPath,
+        // Opus is 1M and the [1m] variants opt other models into 1M; send the
+        // beta for both. It's ignored for models that don't need it.
+        betas: (() => {
+            const m = initial.mode.model?.toLowerCase() ?? '';
+            return m.includes('[1m]') || m.includes('opus') ? ['context-1m-2025-08-07'] : undefined;
+        })(),
     }
 
     // Track thinking state
