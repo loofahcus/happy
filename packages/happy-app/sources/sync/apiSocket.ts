@@ -4,6 +4,7 @@ import Constants from 'expo-constants';
 import { TokenStorage } from '@/auth/tokenStorage';
 import { Encryption } from './encryption/encryption';
 import { storage } from './storage';
+import { createAsyncSequencer } from './asyncSequencer';
 
 export function getHappyClientId(): string {
     let platform: string = Platform.OS; // 'ios' | 'android' | 'web'
@@ -60,6 +61,10 @@ class ApiSocket {
     private config: SyncSocketConfig | null = null;
     private encryption: Encryption | null = null;
     private messageHandlers: Map<string, (data: any) => void> = new Map();
+    private encryptedEventListeners: Map<string, Set<{ sessionId: string; handler: (data: any) => void }>> = new Map();
+    // Preserves per-(event, session) ordering across the async encrypt/decrypt
+    // boundary so encrypted byte streams (terminal I/O) cannot be reordered.
+    private eventSequencer = createAsyncSequencer();
     private reconnectedListeners: Set<() => void> = new Set();
     private statusListeners: Set<(status: 'disconnected' | 'connecting' | 'connected' | 'error') => void> = new Set();
     private currentStatus: 'disconnected' | 'connecting' | 'connected' | 'error' = 'disconnected';
@@ -101,6 +106,10 @@ class ApiSocket {
         });
 
         this.setupEventHandlers();
+
+        for (const event of this.encryptedEventListeners.keys()) {
+            this.attachEncryptedListeners(this.socket, event);
+        }
     }
 
     disconnect() {
@@ -200,6 +209,39 @@ class ApiSocket {
         return await this.socket.emitWithAck(event, data);
     }
 
+    async sendEncryptedSessionEvent(sessionId: string, event: string, data: any): Promise<boolean> {
+        const enc = this.encryption?.getSessionEncryption(sessionId);
+        const socket = this.socket;
+        if (!enc || !socket) return false;
+        // Serialize encrypt+emit per (event, session): async encryption must
+        // not reorder the outgoing byte stream (e.g. pasted terminal input).
+        await this.eventSequencer.enqueue(event + '\u0000' + sessionId, async () => {
+            const encrypted = await enc.encryptRaw(data);
+            socket.emit(event, { scope: sessionId, data: encrypted });
+        });
+        return true;
+    }
+
+    onEncryptedSessionEvent(sessionId: string, event: string, handler: (data: any) => void): () => void {
+        const entry = { sessionId, handler };
+        if (!this.encryptedEventListeners.has(event)) {
+            this.encryptedEventListeners.set(event, new Set());
+        }
+        this.encryptedEventListeners.get(event)!.add(entry);
+        if (this.socket) {
+            this.attachEncryptedListeners(this.socket, event);
+        }
+        return () => {
+            this.encryptedEventListeners.get(event)?.delete(entry);
+            if (this.encryptedEventListeners.get(event)?.size === 0) {
+                this.encryptedEventListeners.delete(event);
+                this.socket?.off(event);
+            }
+        };
+    }
+
+
+
     //
     // HTTP Requests
     //
@@ -259,6 +301,29 @@ class ApiSocket {
             this.currentStatus = status;
             this.statusListeners.forEach(listener => listener(status));
         }
+    }
+
+    private attachEncryptedListeners(socket: Socket, event: string): void {
+        socket.off(event);
+        const entries = this.encryptedEventListeners.get(event);
+        if (!entries || entries.size === 0) return;
+        socket.on(event, (msg: { scope: string; data: string }) => {
+            const enc = this.encryption?.getSessionEncryption(msg.scope);
+            if (!enc) return;
+            // Serialize decrypt+dispatch per (event, scope). socket.io delivers
+            // packets in order; without this, awaiting async decryption lets
+            // completions interleave and reorder a byte stream (terminal output).
+            void this.eventSequencer.enqueue(event + '\u0000' + msg.scope, async () => {
+                const decrypted = await enc.decryptRaw(msg.data);
+                if (decrypted === null) return;
+                const current = this.encryptedEventListeners.get(event);
+                if (!current) return;
+                for (const { sessionId, handler } of current) {
+                    if (msg.scope !== sessionId) continue;
+                    handler(decrypted);
+                }
+            });
+        });
     }
 
     private setupEventHandlers() {

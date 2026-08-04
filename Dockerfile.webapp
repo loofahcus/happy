@@ -1,6 +1,7 @@
 # Stage 1: install dependencies with workspace context
 FROM node:20-alpine AS deps
 
+RUN apk add --no-cache python3 make g++
 RUN corepack enable && corepack prepare pnpm@10.11.0 --activate
 
 WORKDIR /repo

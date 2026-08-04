@@ -175,3 +175,101 @@ The rename UI is intentionally minimal: a `Modal.prompt` returning the new title
 
 - The fork commit also touched `SessionsList.tsx` to "remove a broken long-press handler". Upstream already has a working `onLongPress: showActionAlert` on session items, so we leave that path alone.
 - `Modal.prompt` and `apiSocket.emitWithAck` are the same primitives already used by other update flows (e.g. `machine-update-metadata` for renaming machines), so no new infra.
+
+---
+
+## 5. Integrated Remote Terminal with Encrypted PTY Streaming
+
+### Problem
+
+Users have no way to run shell commands on the remote machine from the webapp. The only option is to ask Claude to execute commands, adding latency and lacking true interactive terminal experience (readline, cursor movement, ncurses apps).
+
+### Design
+
+End-to-end encrypted terminal feature spanning all four packages:
+
+| Layer | Component | Role |
+|---|---|---|
+| Wire | `terminalProtocol.ts` | Zod schemas for RPC methods (create/attach/resize/destroy/list), event types (input/output), and constants |
+| CLI | `terminalHandler.ts` | Registers RPC handlers; segments output for large payloads |
+| CLI | `ptyProvider.ts` | Manages PTY lifecycle (spawn/write/resize/destroy); per-terminal `CircularBuffer` for reattach replay |
+| CLI | `circularBuffer.ts` | Fixed-size ring buffer storing recent output chunks |
+| Server | `socket/terminalHandler.ts` | Routes encrypted terminal events between app and daemon Socket.IO rooms |
+| App | `Terminal.web.tsx` | xterm.js integration with FitAddon, dark/light themes, resize observer |
+| App | `TerminalPanel.tsx` | Panel chrome with connection status dot and close button |
+
+#### Key features
+
+- **Encrypted streaming**: All I/O flows through the same encrypted event channel as chat (new `sendEncryptedSessionEvent` / `onEncryptedSessionEvent` on both app and CLI sides)
+- **PTY persistence**: Terminal survives panel hide/show; `attach` replays `CircularBuffer`
+- **Reattach on reconnect**: Socket reconnection auto-reattaches
+- **Segmented output**: Large output chunked to avoid socket frame limits
+- **Terminal response filtering**: Strips xterm query responses (DA1, CPR, etc.) from input to prevent echo loops
+- **Keyboard shortcut**: Ctrl+` toggles the terminal panel (web only)
+
+### Files changed
+
+| File | Change |
+|---|---|
+| `packages/happy-wire/src/terminalProtocol.ts` | **New.** Zod schemas + constants |
+| `packages/happy-wire/src/terminalProtocol.test.ts` | **New.** Schema validation tests |
+| `packages/happy-wire/src/index.ts` | Re-export terminal protocol |
+| `packages/happy-cli/src/modules/terminal/terminalHandler.ts` | **New.** RPC handler registration |
+| `packages/happy-cli/src/modules/terminal/ptyProvider.ts` | **New.** PTY lifecycle + CircularBuffer |
+| `packages/happy-cli/src/modules/terminal/circularBuffer.ts` | **New.** Ring buffer |
+| `packages/happy-cli/src/modules/terminal/circularBuffer.test.ts` | **New.** Unit tests |
+| `packages/happy-cli/src/modules/terminal/ptyProvider.test.ts` | **New.** Unit tests |
+| `packages/happy-cli/tests/terminal-benchmark.ts` | **New.** Performance benchmark |
+| `packages/happy-cli/src/api/rpc/RpcHandlerManager.ts` | Adds `emitEncryptedEvent`, `onEncryptedEvent`, `offEncryptedEvent`, `attachEventListener` for bidirectional encrypted event streaming |
+| `packages/happy-cli/src/api/apiSession.ts` | Registers terminal handlers on connect; destroys terminals on close |
+| `packages/happy-cli/package.json` | Adds `node-pty` dependency |
+| `packages/happy-server/sources/app/api/socket/terminalHandler.ts` | **New.** Server-side event routing |
+| `packages/happy-server/sources/app/api/socket.ts` | Integrates terminal handler |
+| `packages/happy-app/sources/components/terminal/Terminal.web.tsx` | **New.** xterm.js with encrypted I/O + reattach |
+| `packages/happy-app/sources/components/terminal/Terminal.tsx` | **New.** Native stub (returns null) |
+| `packages/happy-app/sources/components/terminal/TerminalPanel.tsx` | **New.** Panel with status indicator |
+| `packages/happy-app/sources/-session/SessionView.tsx` | Terminal state, Ctrl+` shortcut, TerminalPanel render |
+| `packages/happy-app/sources/components/AgentInput.tsx` | Terminal toggle button (web only) |
+| `packages/happy-app/sources/sync/apiSocket.ts` | `sendEncryptedSessionEvent`, `onEncryptedSessionEvent`, `attachEncryptedListeners`, each serialized through the sequencer |
+| `packages/happy-app/sources/sync/asyncSequencer.ts` | **New.** `createAsyncSequencer()` — per-key FIFO across the async crypto boundary |
+| `packages/happy-app/sources/sync/asyncSequencer.test.ts` | **New.** Ordering / independence / throw-recovery tests |
+| `packages/happy-app/package.json` | Adds xterm dependencies |
+
+### Ordering: encrypted I/O is serialized end to end
+
+#### Why the I/O is serialized
+
+In the integrated web terminal, pasting text such as `echo "happy"` intermittently rendered **scrambled** — e.g. `ehappy"` or `e"pp`, differently each time, and sometimes correctly. Command output was equally unstable: the same `echo "happy"` printed its result at the end of the line, on a new line, or not visibly at all.
+
+#### The reordering hazard
+
+Terminal I/O is end-to-end encrypted per session with `AES256Encryption`, whose `rn-encryption` encrypt/decrypt calls are genuinely asynchronous (native / WebCrypto-style). In `packages/happy-app/sources/sync/apiSocket.ts`:
+
+- **Output** — `attachEncryptedListeners` registered an `async` `socket.on` handler that did `await enc.decryptRaw(msg.data)` per packet with no serialization. socket.io delivers packets in order, but two decrypts that *start* in order can *finish* out of order; whichever resolved first called `terminal.write()` first. Because zsh (zle / syntax highlighting) redraws the whole line with cursor-control escapes on every keystroke, a single paste produces many small `terminal:output` chunks — reordering them scrambles the line and misplaces the command output.
+- **Input** — `sendEncryptedSessionEvent` had the same shape (`await enc.encryptRaw(data)` then emit), so fast-typed / multi-event paste input could reorder before reaching the PTY.
+
+The CLI side was already ordered (synchronous decrypt on receive, FIFO flush queue on send), so the defect was entirely at the app's async-crypto boundary. These two methods are used **only** by the terminal.
+
+#### The sequencer
+
+Add `createAsyncSequencer()` — a per-key FIFO chain that guarantees tasks run *and complete* in enqueue order, even when the async work inside resolves out of order. Each task is chained onto the tail of the previous one for the same key using microtasks only (no `setTimeout` hop), so it adds no latency to a high-throughput stream.
+
+Wire it into both `apiSocket` paths, keyed by `(event, session)`:
+
+- **Send:** serialize `encrypt → emit`.
+- **Receive:** the `socket.on` handler is now synchronous and enqueues `decrypt → dispatch`, capturing socket.io's receipt order at enqueue time.
+
+#### Notes
+
+- One root-cause change fixes both reported symptoms: the paste scramble and the unstable output position are the same reordered `terminal:output` stream.
+- `terminal:output` and `terminal:closed` remain independently keyed; strict output-before-`[process exited]` ordering at process exit is not enforced (cosmetic, unchanged from before).
+
+### Deployment
+
+All three deployable units need updates: CLI (daemon), server, and app.
+
+### Notes
+
+- Port of fork commits `8862681a` (terminal) and `d17a975e` (I/O ordering). The former included massive SessionView/AgentInput rewrites (6000+ LOC) that were mostly reformatting — we integrated surgically on the current baseline instead.
+- `node-pty` is a native module requiring build tools (python3/make/g++) — the `Dockerfile.webapp` may need Alpine deps added if building in Docker (see commit `5d992d7a`).
+- Terminal toggle button is web-only (native doesn't have xterm.js).

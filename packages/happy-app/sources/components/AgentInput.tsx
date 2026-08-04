@@ -110,6 +110,7 @@ interface AgentInputProps {
     isSending?: boolean;
     minHeight?: number;
     zenMode?: boolean;
+    onTerminalToggle?: () => void;
     /** Image attachments waiting to be sent (expImageUpload feature). */
     selectedImages?: AttachmentPreview[];
     onPickImages?: () => void;
@@ -1343,6 +1344,28 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
                                     )}
                                 </Pressable>
                             </Shaker>
+                        )}
+
+                        {/* Terminal toggle button */}
+                        {Platform.OS === 'web' && props.onTerminalToggle && (
+                            <Pressable
+                                onPress={props.onTerminalToggle}
+                                hitSlop={{ top: 5, bottom: 10, left: 0, right: 0 }}
+                                style={(p) => ({
+                                    alignItems: 'center',
+                                    justifyContent: 'center',
+                                    paddingHorizontal: 8,
+                                    paddingVertical: 6,
+                                    height: 32,
+                                    opacity: p.pressed ? 0.7 : 1,
+                                })}
+                            >
+                                <Ionicons
+                                    name="terminal-outline"
+                                    size={16}
+                                    color={theme.colors.button.secondary.tint}
+                                />
+                            </Pressable>
                         )}
 
                         <GitStatusButton sessionId={props.sessionId} onPress={props.onFileViewerPress} />
