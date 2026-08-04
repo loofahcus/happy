@@ -106,6 +106,7 @@ interface AgentInputProps {
         contextSize: number;
         contextWindow?: number;
     };
+    quota?: Metadata['quota'];
     alwaysShowContextSize?: boolean;
     /** Hide the auxiliary connection/mode row while reading older messages. */
     showStatusDetails?: boolean;
@@ -508,6 +509,18 @@ const getContextStatus = (contextSize: number, alwaysShow: boolean = false, them
     };
 };
 
+// Floodgate quota label + colour for the composer usage row, left of the week
+// stat and the context gauge so a long project name has room to truncate.
+const formatQuotaBudget = (quota: NonNullable<Metadata['quota']>): string =>
+    `$${quota.spend.toFixed(2)}/$${quota.budget.toFixed(0)}`;
+
+const getQuotaColor = (quota: NonNullable<Metadata['quota']>, theme: Theme): string => {
+    const ratio = quota.budget > 0 ? quota.spend / quota.budget : 0;
+    if (ratio >= 0.8) return theme.colors.warningCritical;
+    if (ratio >= 0.5) return theme.colors.warning;
+    return theme.colors.textSecondary;
+};
+
 // Stable sub-trees extracted from AgentInput so they don't reconcile when
 // the input's keystroke-derived state (hasText / inputState) flips. Their
 // props are derived from session metadata, not from the textarea content,
@@ -657,6 +670,8 @@ type UsageRowProps = {
     weekPercent: number | null;
     /** Prebuilt "Session — 32% · resets 6 PM" rows for the week popup. */
     usageMenuOptions: NativeSettingsMenuOption[];
+    /** Floodgate spend for the machine's active project, when one is configured. */
+    quota?: Metadata['quota'];
 };
 
 // Sits under the composer card, right-aligned with the effort label: week
@@ -665,7 +680,7 @@ type UsageRowProps = {
 const AgentInputUsageRow = React.memo(function AgentInputUsageRow(p: UsageRowProps) {
     const { theme } = useUnistyles();
     const [showPreciseContext, setShowPreciseContext] = React.useState(false);
-    if (!p.contextStatus && p.weekPercent == null) {
+    if (!p.contextStatus && p.weekPercent == null && !p.quota) {
         return null;
     }
     const weekText = p.weekPercent != null ? (
@@ -685,6 +700,22 @@ const AgentInputUsageRow = React.memo(function AgentInputUsageRow(p: UsageRowPro
             paddingTop: 6,
             minHeight: 18,
         }}>
+            {p.quota && (
+                <View style={{ flexDirection: 'row', alignItems: 'center', flexShrink: 1, marginRight: 'auto' }}>
+                    <Text numberOfLines={1} style={{ fontSize: 11, color: getQuotaColor(p.quota, theme), flexShrink: 0, ...Typography.default() }}>
+                        {formatQuotaBudget(p.quota)}
+                    </Text>
+                    {p.quota.projectName ? (
+                        <Text
+                            numberOfLines={1}
+                            ellipsizeMode="tail"
+                            style={{ fontSize: 11, color: theme.colors.textSecondary, flexShrink: 1, marginLeft: 4, ...Typography.default() }}
+                        >
+                            {p.quota.projectName}
+                        </Text>
+                    ) : null}
+                </View>
+            )}
             {weekText && (
                 p.usageMenuOptions.length > 0 ? (
                     <NativeSettingsMenu
@@ -2437,6 +2468,7 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
 
                 <AnimatedFade visible={props.showStatusDetails !== false}>
                     <AgentInputUsageRow
+                        quota={props.quota}
                         contextStatus={contextStatus}
                         weekPercent={weekPercent}
                         usageMenuOptions={usageMenuOptions}

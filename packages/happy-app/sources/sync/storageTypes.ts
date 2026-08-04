@@ -24,6 +24,13 @@ export type RigComposerDraft = z.infer<typeof RigComposerDraftSchema>;
 
 export const MetadataSchema = z.object({
     bot: RigBotSchema.optional(),
+    quota: z.object({
+        spend: z.number(),
+        budget: z.number(),
+        fetchedAt: z.number(),
+        isProject: z.boolean().optional(), // True when usage reflects a Floodgate project (vs. personal) quota
+        projectName: z.string().optional(), // Human-readable project name when on a project quota
+    }).nullish(),
     models: z.array(z.object({
         code: z.string(),
         value: z.string(),
@@ -483,6 +490,7 @@ export interface DecryptedMessage {
 //
 
 export const MachineMetadataSchema = z.object({
+    floodgateProjectName: z.string().optional(), // Active Floodgate project name for sessions on this machine (empty = personal)
     host: z.string(),
     platform: z.string(),
     happyCliVersion: z.string(),

@@ -347,3 +347,41 @@ The model pickers are augmented through this helper:
 - `packages/happy-app/sources/-session/SessionView.tsx` — custom-name prompt in `updateModelMode`.
 - `packages/happy-app/sources/app/(app)/settings/agents.tsx` — "Custom model…" row for Claude as well as Codex.
 - `packages/happy-app/sources/text/_default.ts` + all `translations/*.ts` — `newSession.customModel{Title,Description,Placeholder}`.
+
+---
+
+## 8. Floodgate Quota Badge in the Composer Usage Row
+
+### Problem
+
+Apple-internal users bill Claude usage against a Floodgate budget (personal or per-project). There was no in-app visibility into how much of that budget a session has consumed, and no way to switch which project a machine's sessions bill to.
+
+### Design — Floodgate quota
+
+A machine-scoped project token drives everything, and a per-session quota sample is surfaced in the status row.
+
+**CLI**
+
+- `utils/quota.ts` — `fetchQuota()` performs an mTLS GET against the internal Floodgate usage API using cert files under `~/.person/`, honouring the `FLOODGATE_PROJECT_TOKEN` env var. Returns `{ spend, budget, fetchedAt, isProject?, projectName? }`, or `null` (silent) when the certs are absent so non-Apple environments are unaffected.
+- `utils/floodgateProject.ts` — read/write the machine-scoped project token + cached name, persisted in the multi-process-locked settings file so every session process shares one source of truth.
+- `runClaude.ts` — a 60s interval (plus an immediate first fetch) calls `fetchQuota()` and pushes the result onto session metadata (`session.updateMetadata((m) => ({ ...m, quota }))`); the interval is cleared on cleanup.
+- `claudeLocal.ts` / `claudeRemote.ts` — apply the machine-scoped token fresh before every turn's spawn so the spawned child inherits the current project (or personal quota when cleared). The local PTY launcher builds it into the child env directly; the remote SDK path calls `applyFloodgateProjectTokenToEnv()` before each `query()`. `claudeRemoteLauncher.ts` additionally forces a re-spawn (detected via `floodgateProjectTokenChanged()`) when the token changes between turns, so switching project takes effect on the very next message even in a long-lived streaming session — context is preserved across the re-spawn via `--resume`.
+- `apiMachine.ts` — `set-floodgate-project` / `get-floodgate-project` RPC handlers; setting a token best-effort resolves the project name and reflects it in machine metadata.
+
+**App**
+
+- `Metadata.quota` schema (`storageTypes.ts`) + `MachineMetadata.floodgateProjectName`.
+- `ops.ts` — `machineSetFloodgateProject` / `machineGetFloodgateProject` RPC wrappers.
+- `machine/[id].tsx` — a "Floodgate Project" group showing the active project and a "Switch Project" action (prompts for a token, applies it machine-wide).
+- `AgentInput.tsx` — the usage row under the composer card renders `$spend/$budget` (colour-escalating as the budget fills) followed by the project name, to the left of upstream's week stat and context gauge. `SessionView` passes `session.metadata?.quota` through.
+
+### Notes / deviations
+
+- Extracted from the Floodgate portion of fork commit `20de6ad1`. The rest of that commit — usage telemetry, Context HUD, model badge, dynamic context window — is now provided by upstream `#1463` / `#1561` and was dropped, so the quota value rides upstream's existing encrypted-metadata sync.
+- This commit originally also rendered a `used/total` context readout. Upstream's composer redesign added its own context gauge (tap to swap the percent for exact token counts) and deleted the status-bar line the readout lived on, so that half was dropped: the gauge already shows both numbers.
+- The quota chip renders inside `AgentInput`'s usage row, beside upstream's week stat and context gauge, so it is visible without opting into any settings.
+
+### Files changed
+
+- CLI: `utils/quota.ts`, `utils/floodgateProject.ts` (+ test), `persistence.ts`, `api/types.ts`, `api/apiMachine.ts`, `claude/claudeLocal.ts`, `claude/claudeRemote.ts`, `claude/claudeRemoteLauncher.ts`, `claude/runClaude.ts`.
+- App: `components/AgentInput.tsx` (`quota` on the usage row, `formatQuotaBudget`, `getQuotaColor`), `sync/storageTypes.ts`, `sync/ops.ts`, `app/(app)/machine/[id].tsx`, `-session/SessionView.tsx`, `text/_default.ts` + all `translations/*.ts`.

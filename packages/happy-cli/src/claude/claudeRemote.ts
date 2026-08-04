@@ -16,6 +16,7 @@ import { fromRateLimitEvent, windowsFromGetUsage, type UnboundRateLimit, type Us
 import type { UsageLimitWindow } from "@/api/types";
 import { pluginsFromArgs } from './utils/pluginsFromArgs';
 import { claudeProviderAuthMessage } from './utils/providerAuth';
+import { applyFloodgateProjectTokenToEnv } from "@/utils/floodgateProject";
 
 export async function claudeRemote(opts: {
 
@@ -175,6 +176,11 @@ export async function claudeRemote(opts: {
             content: initial.message,
         },
     });
+
+    // Refresh the machine-scoped Floodgate project token before this spawn
+    // so the subprocess inherits the current selection. The stored token wins
+    // over any launch-time value; when absent, usage returns to personal quota.
+    await applyFloodgateProjectTokenToEnv();
 
     // Start the loop
     const response = query({
