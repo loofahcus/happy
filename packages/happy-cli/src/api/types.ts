@@ -148,6 +148,8 @@ export const MachineMetadataSchema = z.object({
     happyAgentAuthenticated: z.boolean(),
     detectedAt: z.number(),
   }).optional(),
+  /** Active Floodgate project name for sessions on this machine (display only; empty = personal). */
+  floodgateProjectName: z.string().optional(),
 })
 
 export type MachineMetadata = z.infer<typeof MachineMetadataSchema>
@@ -322,6 +324,15 @@ export type Metadata = {
   flavor?: string
   sandbox?: SandboxConfig | null
   dangerouslySkipPermissions?: boolean | null
+  quota?: {
+    spend: number;
+    budget: number;
+    fetchedAt: number;
+    /** True when usage reflects a Floodgate project (vs. personal) quota. */
+    isProject?: boolean;
+    /** Human-readable project name when on a project quota. */
+    projectName?: string;
+  } | null;
   /** Lineage for sessions created via the fork / duplicate flow. */
   parentSessionId?: string
   forkedFromMessageId?: string

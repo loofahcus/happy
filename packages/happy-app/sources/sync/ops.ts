@@ -486,6 +486,36 @@ export async function machineStopDaemon(machineId: string): Promise<{ message: s
 }
 
 /**
+ * Set (or clear) the machine-scoped Floodgate project token. Passing an empty
+ * string clears it (→ personal quota). The token becomes the source of truth
+ * for which project Claude sessions on this machine bill usage to; existing
+ * sessions switch on their next turn and new sessions inherit it.
+ */
+export async function machineSetFloodgateProject(
+    machineId: string,
+    token: string,
+): Promise<{ token: string | null; projectName: string | null }> {
+    return apiSocket.machineRPC<{ token: string | null; projectName: string | null }, { token: string }>(
+        machineId,
+        'set-floodgate-project',
+        { token }
+    );
+}
+
+/**
+ * Read the current machine-scoped Floodgate project token + cached name.
+ */
+export async function machineGetFloodgateProject(
+    machineId: string,
+): Promise<{ token: string | null; projectName: string | null }> {
+    return apiSocket.machineRPC<{ token: string | null; projectName: string | null }, {}>(
+        machineId,
+        'get-floodgate-project',
+        {}
+    );
+}
+
+/**
  * Execute a bash command on a specific machine
  */
 export async function machineBash(

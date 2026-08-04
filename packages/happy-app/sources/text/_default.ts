@@ -896,6 +896,18 @@ export const en = {
     },
 
     machine: {
+        floodgateProjectGroup: 'Floodgate Project',
+        floodgateProjectFooter: 'Route Claude usage on this machine to a project budget. Applies to all sessions on this machine — existing sessions switch on their next message, new sessions inherit it. Leave empty for personal quota.',
+        floodgateProjectCurrent: 'Active Project',
+        floodgateProjectPersonal: 'Personal (unset)',
+        floodgateProjectConfigure: 'Switch Project',
+        floodgateProjectTitle: 'Floodgate Project Token',
+        floodgateProjectMessage: 'Paste a project token to bill usage to that project. Leave empty to use your personal quota.',
+        floodgateProjectPlaceholder: 'FLOODGATE_PROJECT_TOKEN (empty = personal)',
+        floodgateProjectSet: ({ project }: { project: string }) => `Switched to project: ${project}`,
+        floodgateProjectClearedMessage: 'Switched to personal quota',
+        floodgateProjectFailed: 'Failed to update Floodgate project',
+        floodgateRequiresOnline: 'The machine must be online to change the Floodgate project.',
         launchNewSessionInDirectory: 'Launch New Session in Directory',
         offlineUnableToSpawn: 'Launcher disabled while machine is offline',
         offlineHelp: '• Make sure your computer is online\n• Run `happy daemon status` to diagnose\n• Are you running the latest CLI version? Upgrade with `npm install -g happy@latest`',

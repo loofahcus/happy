@@ -881,6 +881,18 @@ export const zhHans: TranslationStructure = {
     },
 
     machine: {
+        floodgateProjectGroup: 'Floodgate 项目',
+        floodgateProjectFooter: '将此设备上的 Claude 用量计入某个项目预算。适用于此设备上的所有会话——现有会话会在下一条消息时切换，新会话则继承此设置。留空以使用个人配额。',
+        floodgateProjectCurrent: '当前项目',
+        floodgateProjectPersonal: '个人（未设置）',
+        floodgateProjectConfigure: '切换项目',
+        floodgateProjectTitle: 'Floodgate 项目令牌',
+        floodgateProjectMessage: '粘贴项目令牌以将用量计入该项目。留空以使用个人配额。',
+        floodgateProjectPlaceholder: 'FLOODGATE_PROJECT_TOKEN（留空 = 个人）',
+        floodgateProjectSet: ({ project }: { project: string }) => `已切换到项目：${project}`,
+        floodgateProjectClearedMessage: '已切换到个人配额',
+        floodgateProjectFailed: '更新 Floodgate 项目失败',
+        floodgateRequiresOnline: '设备必须在线才能更改 Floodgate 项目。',
         launchNewSessionInDirectory: '在目录中启动新会话',
         offlineUnableToSpawn: '设备离线时无法启动',
         offlineHelp: '• 确保您的计算机在线\n• 运行 `happy daemon status` 进行诊断\n• 您是否在运行最新的 CLI 版本？请使用 `npm install -g happy@latest` 升级',

@@ -880,6 +880,18 @@ export const zhHant: TranslationStructure = {
     },
 
     machine: {
+        floodgateProjectGroup: 'Floodgate 專案',
+        floodgateProjectFooter: '將此裝置上的 Claude 用量計入某個專案預算。適用於此裝置上的所有工作階段——現有工作階段會在下一則訊息時切換，新工作階段則繼承此設定。留空以使用個人配額。',
+        floodgateProjectCurrent: '目前專案',
+        floodgateProjectPersonal: '個人（未設定）',
+        floodgateProjectConfigure: '切換專案',
+        floodgateProjectTitle: 'Floodgate 專案權杖',
+        floodgateProjectMessage: '貼上專案權杖以將用量計入該專案。留空以使用個人配額。',
+        floodgateProjectPlaceholder: 'FLOODGATE_PROJECT_TOKEN（留空 = 個人）',
+        floodgateProjectSet: ({ project }: { project: string }) => `已切換到專案：${project}`,
+        floodgateProjectClearedMessage: '已切換到個人配額',
+        floodgateProjectFailed: '更新 Floodgate 專案失敗',
+        floodgateRequiresOnline: '裝置必須在線上才能變更 Floodgate 專案。',
         launchNewSessionInDirectory: '在目錄中啟動新工作階段',
         offlineUnableToSpawn: '裝置離線時無法啟動',
         offlineHelp: '• 確保您的電腦在線上\n• 執行 `happy daemon status` 進行診斷\n• 您是否在執行最新的 CLI 版本？請使用 `npm install -g happy@latest` 升級',

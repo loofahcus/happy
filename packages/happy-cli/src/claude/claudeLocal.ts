@@ -12,6 +12,7 @@ import { projectPath } from "@/projectPath";
 import { systemPrompt } from "./utils/systemPrompt";
 import type { SandboxConfig } from "@/persistence";
 import { initializeSandbox, wrapCommand } from "@/sandbox/manager";
+import { readFloodgateProjectToken } from "@/utils/floodgateProject";
 
 /**
  * Error thrown when the Claude process exits with a non-zero exit code.
@@ -206,6 +207,12 @@ export async function claudeLocal(opts: {
             }
         }
 
+        // Resolve the machine-scoped Floodgate project token once before spawn
+        // so the child Claude process routes usage to the selected project
+        // (or personal when unset). Read fresh so app-side switches apply to
+        // the next local session start.
+        const floodgateProjectToken = await readFloodgateProjectToken();
+
         await new Promise<void>((r, reject) => {
             const args: string[] = []
 
@@ -260,6 +267,14 @@ export async function claudeLocal(opts: {
             const env = {
                 ...process.env,
                 ...opts.claudeEnvVars
+            }
+
+            // Machine-scoped Floodgate project token wins over inherited env and
+            // launch-time --claude-env; clearing it falls back to personal quota.
+            if (floodgateProjectToken) {
+                env.FLOODGATE_PROJECT_TOKEN = floodgateProjectToken;
+            } else {
+                delete env.FLOODGATE_PROJECT_TOKEN;
             }
 
             if (opts.mcpServers && Object.keys(opts.mcpServers).length > 0) {

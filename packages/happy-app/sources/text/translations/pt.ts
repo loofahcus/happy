@@ -879,6 +879,18 @@ export const pt: TranslationStructure = {
     },
 
     machine: {
+        floodgateProjectGroup: 'Projeto Floodgate',
+        floodgateProjectFooter: 'Direciona o uso do Claude nesta máquina para o orçamento de um projeto. Aplica-se a todas as sessões desta máquina — as sessões existentes mudam na próxima mensagem e as novas a herdam. Deixe vazio para usar a cota pessoal.',
+        floodgateProjectCurrent: 'Projeto ativo',
+        floodgateProjectPersonal: 'Pessoal (não definido)',
+        floodgateProjectConfigure: 'Trocar de projeto',
+        floodgateProjectTitle: 'Token de projeto Floodgate',
+        floodgateProjectMessage: 'Cole um token de projeto para faturar o uso nesse projeto. Deixe vazio para usar sua cota pessoal.',
+        floodgateProjectPlaceholder: 'FLOODGATE_PROJECT_TOKEN (vazio = pessoal)',
+        floodgateProjectSet: ({ project }: { project: string }) => `Alternado para o projeto: ${project}`,
+        floodgateProjectClearedMessage: 'Alternado para a cota pessoal',
+        floodgateProjectFailed: 'Falha ao atualizar o projeto Floodgate',
+        floodgateRequiresOnline: 'A máquina deve estar online para alterar o projeto Floodgate.',
         offlineUnableToSpawn: 'Inicializador desativado enquanto a máquina está offline',
         offlineHelp: '• Verifique se seu computador está online\n• Execute `happy daemon status` para diagnosticar\n• Você está usando a versão mais recente do CLI? Atualize com `npm install -g happy@latest`',
         launchNewSessionInDirectory: 'Iniciar nova sessão no diretório',

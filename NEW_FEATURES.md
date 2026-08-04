@@ -337,3 +337,53 @@ Both model pickers are augmented through this helper:
 - `packages/happy-app/sources/app/(app)/new/index.tsx` — custom option + prompt + persisted-name restore in the new-session picker.
 - `packages/happy-app/sources/-session/SessionView.tsx` — custom option + prompt in the active-session model menu.
 - `packages/happy-app/sources/text/_default.ts` + all `translations/*.ts` — `newSession.customModel{Title,Description,Placeholder}`.
+
+---
+
+## 8. Floodgate Quota Badge and Context Used / Total in the Composer Status Row
+
+### Problem
+
+Two gaps in the composer status row:
+
+1. Apple-internal users bill Claude usage against a Floodgate budget (personal or per-project). There was no in-app visibility into how much of that budget a session has consumed, and no way to switch which project a machine's sessions bill to.
+2. The row showed only "% left" for context — never the absolute numbers behind it. On a 1M session, "% left" alone hides whether the window is 200K or 1M.
+
+Both land together because they share one row, and laying that row out is the same problem for both.
+
+### Design — Floodgate quota
+
+A machine-scoped project token drives everything, and a per-session quota sample is surfaced in the status row.
+
+**CLI**
+
+- `utils/quota.ts` — `fetchQuota()` performs an mTLS GET against the internal Floodgate usage API using cert files under `~/.person/`, honouring the `FLOODGATE_PROJECT_TOKEN` env var. Returns `{ spend, budget, fetchedAt, isProject?, projectName? }`, or `null` (silent) when the certs are absent so non-Apple environments are unaffected.
+- `utils/floodgateProject.ts` — read/write the machine-scoped project token + cached name, persisted in the multi-process-locked settings file so every session process shares one source of truth.
+- `runClaude.ts` — a 60s interval (plus an immediate first fetch) calls `fetchQuota()` and pushes the result onto session metadata (`session.updateMetadata((m) => ({ ...m, quota }))`); the interval is cleared on cleanup.
+- `claudeLocal.ts` / `claudeRemote.ts` — apply the machine-scoped token fresh before every turn's spawn so the spawned child inherits the current project (or personal quota when cleared). The local PTY launcher builds it into the child env directly; the remote SDK path calls `applyFloodgateProjectTokenToEnv()` before each `query()`. `claudeRemoteLauncher.ts` additionally forces a re-spawn (detected via `floodgateProjectTokenChanged()`) when the token changes between turns, so switching project takes effect on the very next message even in a long-lived streaming session — context is preserved across the re-spawn via `--resume`.
+- `apiMachine.ts` — `set-floodgate-project` / `get-floodgate-project` RPC handlers; setting a token best-effort resolves the project name and reflects it in machine metadata.
+
+**App**
+
+- `Metadata.quota` schema (`storageTypes.ts`) + `MachineMetadata.floodgateProjectName`.
+- `ops.ts` — `machineSetFloodgateProject` / `machineGetFloodgateProject` RPC wrappers.
+- `machine/[id].tsx` — a "Floodgate Project" group showing the active project and a "Switch Project" action (prompts for a token, applies it machine-wide).
+- `AgentInput.tsx` — the status row renders `$spend/$budget` (colour-escalating as the budget fills) followed by the project name. `SessionView` passes `session.metadata?.quota` through.
+
+### Design — context used / total
+
+The same row renders a compact `used/total` readout (e.g. `180k/1M`) immediately after the "% left" text and before the quota; `formatTokens` renders the k/M suffixes.
+
+The readout is **gated on a known context window**, matching the rule upstream established in `#1561`: until the session reports its real window there is no honest denominator, and a guessed total makes the number jump when the real window arrives. `usageData.contextWindow` is upstream's value, read per model off `SDKResultMessage.modelUsage` — we do not infer it from the model name.
+
+Layout: on the crowded mobile row, the connection status, "% left", `used/total` and `$spend/$budget` are each pinned to a single line and never shrink; the Floodgate project name is the only element allowed to truncate (a separate `flexShrink` text after the budget), so the budget stays visible and a long project name can't collapse the row.
+
+### Notes / deviations
+
+- Extracted from the Floodgate portion of fork commit `20de6ad1`. The rest of that commit — usage telemetry, Context HUD, model badge, dynamic context window — is now provided by upstream `#1463` / `#1561` and was dropped, so the quota value rides upstream's existing encrypted-metadata sync and both readouts sit in upstream's own composer status row.
+- The quota chip renders inside `AgentInput`'s status row rather than `SessionStatusBar`, so it is visible without opting into the (default-hidden) status bar.
+
+### Files changed
+
+- CLI: `utils/quota.ts`, `utils/floodgateProject.ts` (+ test), `persistence.ts`, `api/types.ts`, `api/apiMachine.ts`, `claude/claudeLocal.ts`, `claude/claudeRemote.ts`, `claude/claudeRemoteLauncher.ts`, `claude/runClaude.ts`.
+- App: `components/AgentInput.tsx` (`quota` + `contextUsage` on the status row, `formatTokens`, `formatQuotaBudget`, `getQuotaColor`), `sync/storageTypes.ts`, `sync/ops.ts`, `app/(app)/machine/[id].tsx`, `-session/SessionView.tsx`, `text/_default.ts` + all `translations/*.ts`.

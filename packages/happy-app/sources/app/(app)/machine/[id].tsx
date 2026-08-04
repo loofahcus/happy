@@ -8,7 +8,7 @@ import { Typography } from '@/constants/Typography';
 import { useSessions, useAllMachines, useMachine } from '@/sync/storage';
 import { Ionicons, Octicons } from '@expo/vector-icons';
 import type { Session } from '@/sync/storageTypes';
-import { machineStopDaemon, machineUpdateMetadata, machineDelete } from '@/sync/ops';
+import { machineStopDaemon, machineUpdateMetadata, machineDelete, machineSetFloodgateProject, machineGetFloodgateProject } from '@/sync/ops';
 import { Modal } from '@/modal';
 import { formatPathRelativeToHome, getSessionName, getSessionSubtitle } from '@/utils/sessionUtils';
 import { isMachineOnline } from '@/utils/machineUtils';
@@ -76,6 +76,7 @@ export default function MachineDetailScreen() {
     const [isStoppingDaemon, setIsStoppingDaemon] = useState(false);
     const [isRenamingMachine, setIsRenamingMachine] = useState(false);
     const [isDeletingMachine, setIsDeletingMachine] = useState(false);
+    const [isSettingFloodgate, setIsSettingFloodgate] = useState(false);
     const [customPath, setCustomPath] = useState('');
     const [isSpawning, setIsSpawning] = useState(false);
     const inputRef = useRef<MultiTextInputHandle>(null);
@@ -232,6 +233,55 @@ export default function MachineDetailScreen() {
             } finally {
                 setIsRenamingMachine(false);
             }
+        }
+    };
+
+    const handleConfigureFloodgateProject = async () => {
+        if (!machine || !machineId) return;
+        if (!isMachineOnline(machine)) {
+            Modal.alert(t('common.error'), t('machine.floodgateRequiresOnline'));
+            return;
+        }
+
+        // Best-effort prefill with the currently active token.
+        let currentToken = '';
+        try {
+            const current = await machineGetFloodgateProject(machineId);
+            currentToken = current.token ?? '';
+        } catch {
+            // Ignore — prefill is optional.
+        }
+
+        const newToken = await Modal.prompt(
+            t('machine.floodgateProjectTitle'),
+            t('machine.floodgateProjectMessage'),
+            {
+                defaultValue: currentToken,
+                placeholder: t('machine.floodgateProjectPlaceholder'),
+                cancelText: t('common.cancel'),
+                confirmText: t('common.save')
+            }
+        );
+
+        if (newToken === null) return;
+
+        setIsSettingFloodgate(true);
+        try {
+            const result = await machineSetFloodgateProject(machineId, newToken.trim());
+            await sync.refreshMachines();
+            Modal.alert(
+                t('common.success'),
+                result.token
+                    ? t('machine.floodgateProjectSet', { project: result.projectName || result.token })
+                    : t('machine.floodgateProjectClearedMessage')
+            );
+        } catch (error) {
+            Modal.alert(
+                t('common.error'),
+                error instanceof Error ? error.message : t('machine.floodgateProjectFailed')
+            );
+        } finally {
+            setIsSettingFloodgate(false);
         }
     };
 
@@ -569,6 +619,28 @@ export default function MachineDetailScreen() {
                         />
                     </ItemGroup>
                 )}
+
+                {/* Floodgate Project */}
+                <ItemGroup title={t('machine.floodgateProjectGroup')} footer={t('machine.floodgateProjectFooter')}>
+                    <Item
+                        title={t('machine.floodgateProjectCurrent')}
+                        detail={metadata?.floodgateProjectName || t('machine.floodgateProjectPersonal')}
+                        detailStyle={{ color: metadata?.floodgateProjectName ? '#34C759' : theme.colors.textSecondary }}
+                        showChevron={false}
+                    />
+                    <Item
+                        title={t('machine.floodgateProjectConfigure')}
+                        onPress={handleConfigureFloodgateProject}
+                        disabled={isSettingFloodgate || !isMachineOnline(machine)}
+                        rightElement={
+                            isSettingFloodgate ? (
+                                <ActivityIndicator size="small" color={theme.colors.textSecondary} />
+                            ) : (
+                                <Ionicons name="swap-horizontal" size={20} color={theme.colors.textSecondary} />
+                            )
+                        }
+                    />
+                </ItemGroup>
 
                 {/* Previous Sessions (debug view) */}
                 {previousSessions.length > 0 && (

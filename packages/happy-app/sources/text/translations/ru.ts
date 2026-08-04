@@ -884,6 +884,18 @@ export const ru: TranslationStructure = {
     },
 
     machine: {
+        floodgateProjectGroup: 'Проект Floodgate',
+        floodgateProjectFooter: 'Направляет использование Claude на этой машине в бюджет проекта. Применяется ко всем сессиям на этой машине — существующие сессии переключаются при следующем сообщении, а новые наследуют настройку. Оставьте пустым для личной квоты.',
+        floodgateProjectCurrent: 'Активный проект',
+        floodgateProjectPersonal: 'Личный (не задан)',
+        floodgateProjectConfigure: 'Сменить проект',
+        floodgateProjectTitle: 'Токен проекта Floodgate',
+        floodgateProjectMessage: 'Вставьте токен проекта, чтобы относить использование на этот проект. Оставьте пустым, чтобы использовать личную квоту.',
+        floodgateProjectPlaceholder: 'FLOODGATE_PROJECT_TOKEN (пусто = личный)',
+        floodgateProjectSet: ({ project }: { project: string }) => `Переключено на проект: ${project}`,
+        floodgateProjectClearedMessage: 'Переключено на личную квоту',
+        floodgateProjectFailed: 'Не удалось обновить проект Floodgate',
+        floodgateRequiresOnline: 'Машина должна быть в сети, чтобы изменить проект Floodgate.',
         offlineUnableToSpawn: 'Запуск отключен: машина offline',
         offlineHelp: '• Убедитесь, что компьютер online\n• Выполните `happy daemon status` для диагностики\n• Используете последнюю версию CLI? Обновите командой `npm install -g happy@latest`',
         launchNewSessionInDirectory: 'Запустить новую сессию в папке',

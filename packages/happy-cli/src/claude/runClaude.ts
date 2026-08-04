@@ -18,6 +18,7 @@ import { initialMachineMetadata } from '@/daemon/run';
 import { startHappyServer } from '@/claude/utils/startHappyServer';
 import { startHookServer } from '@/claude/utils/startHookServer';
 import { generateHookSettingsFile, cleanupHookSettingsFile } from '@/claude/utils/generateHookSettings';
+import { fetchQuota } from '@/utils/quota';
 import { registerKillSessionHandler } from './registerKillSessionHandler';
 import { projectPath } from '../projectPath';
 import { resolve } from 'node:path';
@@ -884,6 +885,9 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
                 await session.close();
             }
 
+            // Stop periodic quota fetch
+            clearInterval(quotaInterval);
+
             // Stop Happy MCP server
             happyServer.stop();
 
@@ -924,6 +928,22 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
     // want the metadata stamped — it's the user explicitly choosing to
     // retire the session, not just disconnecting.
     registerKillSessionHandler(session.rpcHandlerManager, () => cleanup({ archive: true }));
+
+    // Periodic Floodgate quota fetch — updates session metadata every
+    // 60s so the app HUD shows $spend/$budget. Fails silently when the
+    // mTLS cert files are missing (non-Apple-internal environments).
+    const quotaInterval = setInterval(async () => {
+        const quota = await fetchQuota();
+        if (quota !== null) {
+            session.updateMetadata((m) => ({ ...m, quota }));
+        }
+    }, 60_000);
+    // Kick off an immediate fetch so we don't wait 60s for the first sample.
+    void fetchQuota().then((quota) => {
+        if (quota !== null) {
+            session.updateMetadata((m) => ({ ...m, quota }));
+        }
+    });
 
     // Create claude loop
     const exitCode = await loop({

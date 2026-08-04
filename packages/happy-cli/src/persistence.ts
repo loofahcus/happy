@@ -45,6 +45,16 @@ interface Settings {
   sandboxConfig?: SandboxConfig
   serverUrl?: string
   webappUrl?: string
+  /**
+   * Machine-scoped Floodgate project token. When set (non-empty), Claude
+   * sessions on this machine route their API usage to the given project
+   * (via the FLOODGATE_PROJECT_TOKEN env var). Empty/absent = personal quota.
+   * Stored here so every session process on the machine shares one source of
+   * truth via the multi-process-locked settings file.
+   */
+  floodgateProjectToken?: string
+  /** Cached human-readable project name for the active token (display only). */
+  floodgateProjectName?: string
 }
 
 const defaultSettings: Settings = {

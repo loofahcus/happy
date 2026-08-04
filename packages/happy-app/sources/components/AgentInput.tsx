@@ -91,6 +91,7 @@ interface AgentInputProps {
         contextSize: number;
         contextWindow?: number;
     };
+    quota?: Metadata['quota'];
     alwaysShowContextSize?: boolean;
     showSessionStatusInfoInSettings?: boolean;
     /** Hide the auxiliary connection/mode row while reading older messages. */
@@ -458,6 +459,25 @@ const getContextWarning = (contextSize: number, alwaysShow: boolean = false, the
     return null; // No display needed
 };
 
+// Compact token formatter for the context used/total readout (e.g. 45k, 1M).
+const formatTokens = (n: number): string => {
+    if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(n % 1_000_000 === 0 ? 0 : 1)}M`;
+    if (n >= 1_000) return `${Math.round(n / 1_000)}k`;
+    return `${n}`;
+};
+
+// Floodgate quota label + colour for the composer status row. Placed beside the
+// context "% left" text (a wide row), so long project names aren't truncated.
+const formatQuotaBudget = (quota: NonNullable<Metadata['quota']>): string =>
+    `$${quota.spend.toFixed(2)}/$${quota.budget.toFixed(0)}`;
+
+const getQuotaColor = (quota: NonNullable<Metadata['quota']>, theme: Theme): string => {
+    const ratio = quota.budget > 0 ? quota.spend / quota.budget : 0;
+    if (ratio >= 0.8) return theme.colors.warningCritical;
+    if (ratio >= 0.5) return theme.colors.warning;
+    return theme.colors.textSecondary;
+};
+
 // Stable sub-trees extracted from AgentInput so they don't reconcile when
 // the input's keystroke-derived state (hasText / inputState) flips. Their
 // props are derived from session metadata, not from the textarea content,
@@ -466,6 +486,8 @@ const getContextWarning = (contextSize: number, alwaysShow: boolean = false, the
 type StatusRowProps = {
     connectionStatus?: AgentInputProps['connectionStatus'];
     contextWarning: { text: string; color: string } | null;
+    contextUsage?: { size: number; window: number } | null;
+    quota?: Metadata['quota'];
     displayPermissionMode: ReturnType<typeof hackMode> | null;
     permissionModeKey: string;
     permissionSemanticKind?: string | null;
@@ -480,7 +502,7 @@ const AgentInputStatusRow = React.memo(function AgentInputStatusRow(p: StatusRow
         && p.permissionModeKey !== 'default'
         && !p.zenMode
         && !!p.permissionLabel;
-    if (!p.connectionStatus && !p.contextWarning && !showPermissionBadge) {
+    if (!p.connectionStatus && !p.contextWarning && !p.contextUsage && !showPermissionBadge) {
         return null;
     }
     return (
@@ -566,14 +588,47 @@ const AgentInputStatusRow = React.memo(function AgentInputStatusRow(p: StatusRow
                     </>
                 )}
                 {p.contextWarning && (
-                    <Text style={{
+                    <Text numberOfLines={1} style={{
                         fontSize: 11,
                         color: p.contextWarning.color,
                         marginLeft: p.connectionStatus ? 8 : 0,
+                        flexShrink: 0,
                         ...Typography.default()
                     }}>
                         {p.connectionStatus ? '• ' : ''}{p.contextWarning.text}
                     </Text>
+                )}
+                {p.contextUsage && (
+                    <Text style={{
+                        fontSize: 11,
+                        color: theme.colors.textSecondary,
+                        marginLeft: (p.connectionStatus || p.contextWarning) ? 8 : 0,
+                        flexShrink: 0,
+                        ...Typography.default()
+                    }} numberOfLines={1}>
+                        {(p.connectionStatus || p.contextWarning) ? '• ' : ''}{formatTokens(p.contextUsage.size)}/{formatTokens(p.contextUsage.window)}
+                    </Text>
+                )}
+                {p.quota && (
+                    <View style={{
+                        flexDirection: 'row',
+                        alignItems: 'center',
+                        flexShrink: 1,
+                        marginLeft: (p.connectionStatus || p.contextWarning || p.contextUsage) ? 8 : 0,
+                    }}>
+                        <Text numberOfLines={1} style={{ fontSize: 11, color: getQuotaColor(p.quota, theme), flexShrink: 0, ...Typography.default() }}>
+                            {(p.connectionStatus || p.contextWarning || p.contextUsage) ? '• ' : ''}{formatQuotaBudget(p.quota)}
+                        </Text>
+                        {p.quota.projectName ? (
+                            <Text
+                                numberOfLines={1}
+                                ellipsizeMode="tail"
+                                style={{ fontSize: 11, color: theme.colors.textSecondary, flexShrink: 1, marginLeft: 4, ...Typography.default() }}
+                            >
+                                {p.quota.projectName}
+                            </Text>
+                        ) : null}
+                    </View>
                 )}
             </View>
             {showPermissionBadge && (() => {
@@ -755,6 +810,17 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
     // Calculate context warning
     const contextWarning = props.usageData?.contextSize
         ? getContextWarning(props.usageData.contextSize, props.alwaysShowContextSize ?? false, theme, props.usageData.contextWindow)
+        : null;
+    // Raw used/total context readout, shown after the "% left" text. Gated on a
+    // known window for the same reason getContextWarning is: there is no honest
+    // denominator until the session reports one, and a guessed total makes the
+    // readout jump when the real window arrives.
+    const contextWindow = props.usageData?.contextWindow;
+    const contextUsage = props.usageData?.contextSize != null
+        && typeof contextWindow === 'number'
+        && Number.isFinite(contextWindow)
+        && contextWindow > 0
+        ? { size: props.usageData.contextSize, window: contextWindow }
         : null;
 
     const agentInputEnterToSend = useSetting('agentInputEnterToSend');
@@ -1935,6 +2001,8 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
                         <AgentInputStatusRow
                             connectionStatus={props.connectionStatus}
                             contextWarning={contextWarning}
+                            contextUsage={contextUsage}
+                            quota={props.quota}
                             displayPermissionMode={displayPermissionMode}
                             permissionModeKey={permissionModeKey}
                             permissionSemanticKind={displayPermissionMode?.semanticKind}

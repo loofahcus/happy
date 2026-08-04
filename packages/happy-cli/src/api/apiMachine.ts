@@ -28,6 +28,13 @@ import {
     forkCodexThread,
     listCodexRewindPoints,
 } from '@/codex/codexThreadFork';
+import {
+    readFloodgateProjectToken,
+    readFloodgateProjectName,
+    setFloodgateProjectToken,
+    setFloodgateProjectName,
+} from '@/utils/floodgateProject';
+import { fetchQuota } from '@/utils/quota';
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -188,6 +195,47 @@ export class ApiMachineClient {
 
             logger.debug(`[API MACHINE] Stopped session ${sessionId}`);
             return { message: 'Session stopped' };
+        });
+
+        // Machine-scoped Floodgate project token control. The token is the
+        // single source of truth for which project Claude sessions on this
+        // machine bill usage to. Persisted to the shared (multi-process locked)
+        // settings file, so every session process — already running or newly
+        // spawned — picks it up on its next Claude turn. Empty/null = personal.
+        this.rpcHandlerManager.registerHandler('set-floodgate-project', async (params: any) => {
+            const rawToken = params?.token;
+            if (rawToken != null && typeof rawToken !== 'string') {
+                throw new Error('token must be a string or null');
+            }
+
+            const token = await setFloodgateProjectToken(rawToken ?? null);
+
+            // Best-effort resolve the project name for display. Fails silently
+            // (e.g. missing mTLS certs) — the token still takes effect.
+            let projectName: string | null = null;
+            if (token) {
+                const quota = await fetchQuota();
+                projectName = quota?.projectName ?? null;
+                if (projectName) {
+                    await setFloodgateProjectName(projectName);
+                }
+            }
+
+            // Reflect the active project in machine metadata so clients can
+            // display it without an extra round-trip.
+            await this.updateMachineMetadata((metadata) => {
+                const base = metadata ?? this.machine.metadata;
+                return { ...base, floodgateProjectName: token ? (projectName ?? undefined) : undefined } as MachineMetadata;
+            }).catch((err) => logger.debug('[API MACHINE] Failed to reflect floodgate project in metadata', err));
+
+            logger.debug(`[API MACHINE] Floodgate project ${token ? 'set' : 'cleared'}`);
+            return { token, projectName };
+        });
+
+        this.rpcHandlerManager.registerHandler('get-floodgate-project', async () => {
+            const token = await readFloodgateProjectToken();
+            const projectName = await readFloodgateProjectName();
+            return { token, projectName };
         });
 
         // Register Claude session fork handlers (used by app-side fork /

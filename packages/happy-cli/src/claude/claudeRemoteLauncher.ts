@@ -7,6 +7,7 @@ import { claudeRemote } from "./claudeRemote";
 import { PermissionHandler } from "./utils/permissionHandler";
 import { mergeUsageLimits } from "./utils/usageLimits";
 import { Future } from "@/utils/future";
+import { floodgateProjectTokenChanged } from "@/utils/floodgateProject";
 import { SDKAssistantMessage, SDKMessage, SDKUserMessage } from "./sdk";
 import { formatClaudeMessageForInk } from "@/ui/messageFormatterInk";
 import { logger } from "@/ui/logger";
@@ -331,10 +332,14 @@ export async function claudeRemoteLauncher(session: Session): Promise<'switch' |
 
                         let msg = await session.queue.waitForMessagesAndGetAsString(controller.signal);
 
-                        // Check if mode has changed
+                        // Re-spawn when the mode changed, or when the machine-scoped
+                        // Floodgate project token changed since this subprocess spawned:
+                        // the running child inherited the old token at spawn and cannot
+                        // switch mid-stream, so route the next turn through a fresh spawn.
                         if (msg) {
-                            if ((modeHash && msg.hash !== modeHash) || msg.isolate) {
-                                logger.debug('[remote]: mode has changed, pending message');
+                            const floodgateChanged = modeHash ? await floodgateProjectTokenChanged() : false;
+                            if ((modeHash && (msg.hash !== modeHash || floodgateChanged)) || msg.isolate) {
+                                logger.debug(`[remote]: mode or floodgate token changed, pending message (floodgateChanged=${floodgateChanged})`);
                                 pending = msg;
                                 return null;
                             }

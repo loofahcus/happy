@@ -881,6 +881,18 @@ export const ja: TranslationStructure = {
     },
 
     machine: {
+        floodgateProjectGroup: 'Floodgate プロジェクト',
+        floodgateProjectFooter: 'このマシンでの Claude の使用量をプロジェクトの予算に振り分けます。このマシン上のすべてのセッションに適用されます。既存のセッションは次のメッセージで切り替わり、新しいセッションはこれを引き継ぎます。個人のクォータを使う場合は空欄のままにしてください。',
+        floodgateProjectCurrent: 'アクティブなプロジェクト',
+        floodgateProjectPersonal: '個人（未設定）',
+        floodgateProjectConfigure: 'プロジェクトを切り替え',
+        floodgateProjectTitle: 'Floodgate プロジェクトトークン',
+        floodgateProjectMessage: 'プロジェクトトークンを貼り付けると、使用量がそのプロジェクトに請求されます。個人のクォータを使う場合は空欄のままにしてください。',
+        floodgateProjectPlaceholder: 'FLOODGATE_PROJECT_TOKEN（空欄 = 個人）',
+        floodgateProjectSet: ({ project }: { project: string }) => `プロジェクトに切り替えました: ${project}`,
+        floodgateProjectClearedMessage: '個人のクォータに切り替えました',
+        floodgateProjectFailed: 'Floodgate プロジェクトの更新に失敗しました',
+        floodgateRequiresOnline: 'Floodgate プロジェクトを変更するには、マシンがオンラインである必要があります。',
         launchNewSessionInDirectory: 'ディレクトリで新しいセッションを起動',
         offlineUnableToSpawn: 'マシンがオフラインのためランチャーは無効です',
         offlineHelp: '• コンピューターがオンラインであることを確認してください\n• `happy daemon status`を実行して診断してください\n• 最新のCLIバージョンを使用していますか？`npm install -g happy@latest`でアップグレードしてください',
