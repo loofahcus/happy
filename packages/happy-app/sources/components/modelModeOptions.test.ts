@@ -153,6 +153,7 @@ describe('modelModeOptions', () => {
             'claude-fable-5',
             'claude-opus-5',
             'claude-opus-5[1m]',
+            'claude-opus-4-8',
             'claude-sonnet-5',
         ]);
         expect(models.map((model) => model.name)).toEqual([
@@ -160,6 +161,7 @@ describe('modelModeOptions', () => {
             'Fable 5',
             'Opus 5',
             'Opus 5 [1M]',
+            'Opus 4.8',
             'Sonnet 5',
         ]);
         // No `default model` row, and no alias keys: an alias would silently
@@ -208,6 +210,12 @@ describe('modelModeOptions', () => {
         expect(getDefaultPermissionModeKey('agy')).toBe('default');
         expect(getDefaultModelKey('agy')).toBe('Gemini 3.8 Flash');
         expect(getDefaultEffortKey('agy')).toBe('medium');
+    });
+
+    it('keeps the claude default model inside the offered list', () => {
+        const keys = getClaudeModelModes().map((model) => model.key);
+
+        expect(keys).toContain(getDefaultModelKey('claude'));
     });
 
     it('prefers metadata models over hardcoded fallbacks', () => {

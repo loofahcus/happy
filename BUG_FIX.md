@@ -486,3 +486,75 @@ Two features that never coexisted before this rebase — our own `1e034c04` ("su
 ### Notes
 
 - Caught by running this package's *full* test suite as a separate verification pass after the rebase's conflicts were all resolved — neither feature's own conflict-resolution touched the other's code path, so nothing flagged the interaction earlier.
+
+---
+
+## 15. Context Readouts Disappear on Opus 5
+
+### Symptom
+
+The composer stopped showing the context readout — no `% left`, no token counts. Nothing else changed: project name, connection status and the quota chip were all still there.
+
+Confusingly, the model picker showed **opus 4.8** — a model on which the readout had always worked.
+
+### Root cause
+
+Two independent bugs compounding.
+
+**a) `modelUsage` keys the 1M Opus 5 variant as `claude-opus-5[1m]`, while assistant messages report `claude-opus-5`.**
+
+The SDK reports a model's real context window only on `result` messages (`modelUsage[model].contextWindow`), so `SDKToLogConverter` remembers it per model and stamps it onto later assistant `usage.context_window` (see `NEW_FEATURES.md` section 8). The lookup key is the assistant message's `message.model`, which never matches the beta-variant key:
+
+| launch | assistant model | `modelUsage` key | window | match |
+|---|---|---|---|---|
+| `--model opus` | `claude-opus-5` | `claude-opus-5[1m]` | 1M | ✗ |
+| `--model claude-opus-5` | `claude-opus-5` | `claude-opus-5` | 200k | ✓ |
+| `--model claude-opus-5 --betas=context-1m-2025-08-07` | `claude-opus-5` | `claude-opus-5` | 1M | ✓ |
+| `--model claude-opus-4-8` | `claude-opus-4-8` | `claude-opus-4-8` | 200k | ✓ |
+| `--model claude-opus-4-8 --betas=context-1m-2025-08-07` | `claude-opus-4-8` | `claude-opus-4-8` | 1M | ✓ |
+
+(measured with `claude --print --output-format stream-json --verbose` on apple-claude-code 2.1.143)
+
+The `[1m]` suffix is Opus-5-only — 4.8 keeps the plain key even with the 1M beta enabled. With no window recorded under the canonical name, `usage.context_window` is never stamped, and the app deliberately renders nothing rather than divide by a guessed denominator (`AgentInput.tsx`'s `getContextWarning` and `contextUsage`), so both readouts vanish together.
+
+**b) The picker's `opus 4.8` entry selected Opus 5.**
+
+`getClaudeModelModes()` offered `{ key: 'opus', name: 'opus 4.8' }`. The CLI's `opus` alias now resolves to `claude-opus-5[1m]` — Opus 5 at 1M, without any beta flag being passed. So the entry labelled 4.8 was precisely the one broken variant, real 4.8 was unreachable from the picker, and the badge misreported the running model. This is why the symptom looked impossible: the readout was missing on the one model where it had never failed.
+
+### Fix
+
+**a)** Record the window under the canonical model name as well as the raw key. The SDK reports the mapping as `canonicalModel` — a runtime field its published `ModelUsage` type omits — so read it defensively and fall back to stripping a trailing `[...]` suffix. Both names are recorded so a message naming the variant outright still resolves; later turns overwrite, keeping the window current across model switches.
+
+**b)** Upstream reached the same conclusion independently and rebuilt the whole list around full model IDs (`ac68e914`, `a755c2ad`), which resolves the mislabelled `opus` alias and moves the Claude default to `claude-opus-5`. Only one gap remained: upstream offers the current generation exclusively, so 4.8 is unreachable. This adds `claude-opus-4-8` back as a fourth row, keyed by the full ID for the same reason as its neighbours.
+
+### Files changed
+
+| File | Change |
+|---|---|
+| `packages/happy-cli/src/claude/utils/sdkToLogConverter.ts` | `canonicalModelName()` helper; record the window under both the raw key and the canonical name |
+| `packages/happy-cli/src/claude/utils/sdkToLogConverter.test.ts` | Variant-key, missing-`canonicalModel`, and raw-variant-message cases |
+| `packages/happy-app/sources/components/modelModeOptions.ts` | Adds the `Opus 4.8` row, keyed `claude-opus-4-8`, to upstream's current-generation list |
+| `packages/happy-app/sources/components/modelModeOptions.test.ts` | 4.8 added to the expected key and name lists |
+
+### Notes / scope
+
+- `runClaude.ts`'s `DEFAULT_CLAUDE_MODEL = 'opus'` is gone upstream (`dd568d91`): a remote turn now inherits whatever the user's own Claude config resolves to, and fix (a) covers its readout either way.
+- Sessions with `modelMode: 'opus'` already persisted keep working and show as `opus / custom` in the picker until re-selected.
+- `agentDefaults.ts` is untouched now — upstream already moved the Claude default to `claude-opus-5`.
+
+### Also fixed: window not remembered across sessions
+
+The window is only reported at turn end — `modelUsage[model].contextWindow` rides the `result` message, which arrives *after* the assistant messages of the same turn — so `SDKToLogConverter` has nothing to stamp during turn 1, and the map lived only in memory. Every new session paid the "blank until turn 2" cost again, even for a model this machine had used hundreds of times.
+
+Persist values the SDK reports in the shared, multi-process-locked `~/.happy/settings.json` under `contextWindows`, seeded back into the converter's map at construction. Only observed values are stored — never a guess — so a model's very first turn on this machine is still honestly blank. The converter stays I/O-free: the caller passes a `ContextWindowMemory` (`known` to seed, `onLearned` to persist), and `claudeRemoteLauncher` supplies it; `onLearned` fires only when a value actually changes, so a seeded session that learns nothing writes nothing.
+
+| File | Change |
+|---|---|
+| `packages/happy-cli/src/claude/utils/contextWindowStore.ts` | **New.** `readContextWindows()` / `rememberContextWindow()` over the locked settings file; treats the hand-editable file as untrusted and keeps only positive token counts |
+| `packages/happy-cli/src/claude/utils/contextWindowStore.test.ts` | **New.** Round-trip, multi-model, overwrite, garbage-filtering, and "leaves unrelated settings alone" cases |
+| `packages/happy-cli/src/claude/utils/sdkToLogConverter.ts` | `ContextWindowMemory` seed/report hook; `isUsableWindow()` shared by the seed and result paths; `recordContextWindow()` reports only on change |
+| `packages/happy-cli/src/claude/utils/sdkToLogConverter.test.ts` | First-turn stamp from a remembered window, unusable seed values, learn-reported-once, seeded-not-reported-back |
+| `packages/happy-cli/src/claude/claudeRemoteLauncher.ts` | Loads remembered windows before constructing the converter; persists newly learned ones |
+| `packages/happy-cli/src/persistence.ts` | `contextWindows?: Record<string, number>` on `Settings` |
+
+- `convertSDKToLog()` in `sdkToLogConverter.ts` has no callers and was left as-is; it takes no memory, so a hypothetical caller keeps the old turn-1-blank behaviour.

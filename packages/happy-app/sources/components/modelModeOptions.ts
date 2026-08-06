@@ -172,6 +172,10 @@ export function getClaudeModelModes(): ModelMode[] {
         { key: 'claude-fable-5', name: 'Fable 5', description: null, providerId: 'anthropic', providerName: 'Anthropic' },
         { key: 'claude-opus-5', name: 'Opus 5', description: null, providerId: 'anthropic', providerName: 'Anthropic' },
         { key: 'claude-opus-5[1m]', name: 'Opus 5 [1M]', description: '1M context', providerId: 'anthropic', providerName: 'Anthropic' },
+        // Our one addition to the current generation: 4.8 is still the model we
+        // reach for on long-running work, and the `opus` alias resolves to
+        // `claude-opus-5[1m]`, so the full ID is the only way to pin it.
+        { key: 'claude-opus-4-8', name: 'Opus 4.8', description: null, providerId: 'anthropic', providerName: 'Anthropic' },
         { key: 'claude-sonnet-5', name: 'Sonnet 5', description: null, providerId: 'anthropic', providerName: 'Anthropic' },
     ];
 }
