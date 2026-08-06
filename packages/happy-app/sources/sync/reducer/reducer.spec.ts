@@ -290,6 +290,75 @@ describe('reducer', () => {
             });
         });
 
+        it('should keep the last known context window when a later message omits it', () => {
+            // Sub-agent turns run on a different model, whose window may not be
+            // known yet — dropping it would blink the readout off mid-session.
+            const state = createReducer();
+            const messages: NormalizedMessage[] = [
+                {
+                    id: 'agent-window-carry-1',
+                    localId: null,
+                    createdAt: 1000,
+                    role: 'agent',
+                    isSidechain: false,
+                    usage: {
+                        input_tokens: 10,
+                        output_tokens: 5,
+                        context_window: 1_000_000,
+                    },
+                    content: []
+                },
+                {
+                    id: 'agent-window-carry-2',
+                    localId: null,
+                    createdAt: 2000,
+                    role: 'agent',
+                    isSidechain: false,
+                    usage: {
+                        input_tokens: 20,
+                        output_tokens: 6,
+                    },
+                    content: []
+                }
+            ];
+
+            const result = reducer(state, messages);
+
+            expect(result.usage).toMatchObject({
+                inputTokens: 20,
+                outputTokens: 6,
+                contextWindow: 1_000_000,
+            });
+        });
+
+        it('should let a later message replace the context window with its own', () => {
+            const state = createReducer();
+            const messages: NormalizedMessage[] = [
+                {
+                    id: 'agent-window-replace-1',
+                    localId: null,
+                    createdAt: 1000,
+                    role: 'agent',
+                    isSidechain: false,
+                    usage: { input_tokens: 10, output_tokens: 5, context_window: 1_000_000 },
+                    content: []
+                },
+                {
+                    id: 'agent-window-replace-2',
+                    localId: null,
+                    createdAt: 2000,
+                    role: 'agent',
+                    isSidechain: false,
+                    usage: { input_tokens: 20, output_tokens: 6, context_window: 200_000 },
+                    content: []
+                }
+            ];
+
+            const result = reducer(state, messages);
+
+            expect(result.usage?.contextWindow).toBe(200_000);
+        });
+
         it('should process multiple text blocks in one agent message', () => {
             const state = createReducer();
             const messages: NormalizedMessage[] = [

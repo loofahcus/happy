@@ -44,6 +44,25 @@ function getGitBranch(cwd: string): string | undefined {
 }
 
 /**
+ * Cross-session memory of model context windows, supplied by the caller so the
+ * converter itself stays free of I/O.
+ *
+ * `known` seeds the map, which is what lets the very first turn of a session
+ * carry a window at all — the SDK reports one only at the end of a turn.
+ * `onLearned` fires for values the SDK newly reported, so the caller can
+ * persist them for later sessions.
+ */
+export interface ContextWindowMemory {
+    known?: Record<string, number>
+    onLearned?: (model: string, contextWindow: number) => void
+}
+
+/** A window is only usable as a denominator when it is a positive token count. */
+function isUsableWindow(value: unknown): value is number {
+    return typeof value === 'number' && Number.isFinite(value) && value > 0
+}
+
+/**
  * Canonical model name behind a `modelUsage` key.
  *
  * Beta context variants key usage as `claude-opus-5[1m]` while the assistant
@@ -70,10 +89,12 @@ export class SDKToLogConverter {
     private responses?: PermissionResponseLookup
     private sidechainLastUUID = new Map<string, string>();
     private contextWindowByModel = new Map<string, number>();
+    private contextWindowMemory?: ContextWindowMemory;
 
     constructor(
         context: Omit<ConversionContext, 'parentUuid'>,
-        responses?: PermissionResponseLookup
+        responses?: PermissionResponseLookup,
+        contextWindowMemory?: ContextWindowMemory
     ) {
         this.context = {
             ...context,
@@ -82,6 +103,24 @@ export class SDKToLogConverter {
             parentUuid: null
         }
         this.responses = responses
+        this.contextWindowMemory = contextWindowMemory
+        for (const [model, contextWindow] of Object.entries(contextWindowMemory?.known ?? {})) {
+            if (isUsableWindow(contextWindow)) {
+                this.contextWindowByModel.set(model, contextWindow)
+            }
+        }
+    }
+
+    /**
+     * Remember a window, reporting it to the caller only when it changes — so a
+     * seeded value is not written back and a steady session writes nothing.
+     */
+    private recordContextWindow(model: string, contextWindow: number): void {
+        if (this.contextWindowByModel.get(model) === contextWindow) {
+            return
+        }
+        this.contextWindowByModel.set(model, contextWindow)
+        this.contextWindowMemory?.onLearned?.(model, contextWindow)
     }
 
     /**
@@ -107,7 +146,8 @@ export class SDKToLogConverter {
      * model and attach it to later assistant usage. Clients can then measure
      * context against the account's actual limit — which varies by model and
      * plan — instead of assuming a fixed one. Left untouched when the window
-     * is not known yet (the first turn of a session).
+     * is not known yet: the first turn after a model's very first use, or any
+     * turn when no `ContextWindowMemory` was supplied.
      */
     private withContextWindow(message: any): any {
         if (!message?.usage) {
@@ -239,13 +279,13 @@ export class SDKToLogConverter {
                 const resultMsg = sdkMessage as SDKResultMessage
                 for (const [model, usage] of Object.entries(resultMsg.modelUsage ?? {})) {
                     const contextWindow = usage?.contextWindow
-                    if (typeof contextWindow === 'number' && Number.isFinite(contextWindow) && contextWindow > 0) {
+                    if (isUsableWindow(contextWindow)) {
                         // Recorded under both names: assistant messages carry
                         // the canonical one, but a message naming the variant
                         // outright should resolve too. Later turns overwrite,
                         // so switching models keeps the window current.
-                        this.contextWindowByModel.set(model, contextWindow)
-                        this.contextWindowByModel.set(canonicalModelName(model, usage), contextWindow)
+                        this.recordContextWindow(model, contextWindow)
+                        this.recordContextWindow(canonicalModelName(model, usage), contextWindow)
                     }
                 }
                 break

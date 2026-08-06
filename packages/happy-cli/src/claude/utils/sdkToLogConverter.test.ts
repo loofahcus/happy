@@ -307,6 +307,58 @@ describe('SDKToLogConverter', () => {
             expect((logMessage as any)?.message.usage).not.toHaveProperty('context_window')
         })
 
+        it('should stamp a window remembered from an earlier session on the first turn', () => {
+            const seeded = new SDKToLogConverter(context, undefined, {
+                known: { 'claude-opus-5': 1_000_000 }
+            })
+
+            const logMessage = seeded.convert(assistantWithUsage('claude-opus-5'))
+
+            expect((logMessage as any)?.message.usage.context_window).toBe(1_000_000)
+        })
+
+        it('should ignore unusable remembered values', () => {
+            const seeded = new SDKToLogConverter(context, undefined, {
+                known: { 'claude-opus-5': 0 }
+            })
+
+            const logMessage = seeded.convert(assistantWithUsage('claude-opus-5'))
+
+            expect((logMessage as any)?.message.usage).not.toHaveProperty('context_window')
+        })
+
+        it('should report each newly learned window once', () => {
+            const learned: Array<[string, number]> = []
+            const reporting = new SDKToLogConverter(context, undefined, {
+                onLearned: (model, contextWindow) => { learned.push([model, contextWindow]) }
+            })
+            const result = resultReporting({
+                'claude-opus-5[1m]': { contextWindow: 1_000_000, canonicalModel: 'claude-opus-5' }
+            })
+
+            reporting.convert(result)
+            reporting.convert(result)
+
+            expect(learned).toEqual([
+                ['claude-opus-5[1m]', 1_000_000],
+                ['claude-opus-5', 1_000_000]
+            ])
+        })
+
+        it('should not report a remembered window back as newly learned', () => {
+            const learned: string[] = []
+            const seeded = new SDKToLogConverter(context, undefined, {
+                known: { 'claude-opus-5[1m]': 1_000_000, 'claude-opus-5': 1_000_000 },
+                onLearned: (model) => { learned.push(model) }
+            })
+
+            seeded.convert(resultReporting({
+                'claude-opus-5[1m]': { contextWindow: 1_000_000, canonicalModel: 'claude-opus-5' }
+            }))
+
+            expect(learned).toEqual([])
+        })
+
         it('should leave messages without usage alone', () => {
             converter.convert(resultReporting({ 'claude-opus-4-8': { contextWindow: 1_000_000 } }))
 

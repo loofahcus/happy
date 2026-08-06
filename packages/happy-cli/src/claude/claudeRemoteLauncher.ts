@@ -12,6 +12,7 @@ import { SDKAssistantMessage, SDKMessage, SDKUserMessage } from "./sdk";
 import { formatClaudeMessageForInk } from "@/ui/messageFormatterInk";
 import { logger } from "@/ui/logger";
 import { SDKToLogConverter } from "./utils/sdkToLogConverter";
+import { readContextWindows, rememberContextWindow } from "./utils/contextWindowStore";
 import { EnhancedMode } from "./loop";
 import { RawJSONLines } from "@/claude/types";
 import { OutgoingMessageQueue } from "./utils/OutgoingMessageQueue";
@@ -125,12 +126,23 @@ export async function claudeRemoteLauncher(session: Session): Promise<'switch' |
         messageQueue.releaseToolCall(toolCallId);
     });
 
+    // Windows the SDK reported in earlier sessions, so this session's first turn
+    // already has a denominator instead of waiting for its own turn-end result.
+    const knownContextWindows = await readContextWindows();
+
     // Create SDK to Log converter (pass responses from permissions)
     const sdkToLogConverter = new SDKToLogConverter({
         sessionId: session.sessionId || 'unknown',
         cwd: session.path,
         version: process.env.npm_package_version
-    }, permissionHandler.getResponseLookup());
+    }, permissionHandler.getResponseLookup(), {
+        known: knownContextWindows,
+        // Fire-and-forget: the store logs its own failures, and a missed write
+        // only costs the next session its first-turn readout.
+        onLearned: (model, contextWindow) => {
+            void rememberContextWindow(model, contextWindow);
+        }
+    });
 
 
     // Handle messages

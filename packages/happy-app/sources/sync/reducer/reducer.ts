@@ -1171,7 +1171,12 @@ function allocateId() {
 function processUsageData(state: ReducerState, usage: UsageData, timestamp: number) {
     // Only update if this is newer than the current latest usage
     if (!state.latestUsage || timestamp > state.latestUsage.timestamp) {
-        const contextWindow = readPositiveTokenCount(usage.context_window);
+        // Carried forward when a message omits it: sub-agent turns run on a
+        // model whose window may not be known yet, and dropping it would blink
+        // the readout off mid-session. A message that reports its own window
+        // still replaces it.
+        const contextWindow = readPositiveTokenCount(usage.context_window)
+            ?? state.latestUsage?.contextWindow;
         state.latestUsage = {
             inputTokens: usage.input_tokens,
             outputTokens: usage.output_tokens,

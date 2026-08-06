@@ -55,6 +55,14 @@ interface Settings {
   floodgateProjectToken?: string
   /** Cached human-readable project name for the active token (display only). */
   floodgateProjectName?: string
+  /**
+   * Context windows the SDK actually reported, keyed by model id and canonical
+   * model name. The SDK only reports a window on a turn's result message — i.e.
+   * after the assistant messages it applies to — so without a memory the first
+   * turn of every session has no denominator to show. Never a guess: only
+   * values observed on a real result message land here.
+   */
+  contextWindows?: Record<string, number>
 }
 
 const defaultSettings: Settings = {
