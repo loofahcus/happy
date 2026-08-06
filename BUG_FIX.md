@@ -503,7 +503,7 @@ Two independent bugs compounding.
 
 **a) `modelUsage` keys the 1M Opus 5 variant as `claude-opus-5[1m]`, while assistant messages report `claude-opus-5`.**
 
-The SDK reports a model's real context window only on `result` messages (`modelUsage[model].contextWindow`), so `SDKToLogConverter` remembers it per model and stamps it onto later assistant `usage.context_window` (see `NEW_FEATURES.md` section 8). The lookup key is the assistant message's `message.model`, which never matches the beta-variant key:
+The SDK reports a model's real context window only on `result` messages (`modelUsage[model].contextWindow`), so `SDKToLogConverter` remembers it per model and stamps it onto later assistant `usage.context_window` (upstream `#1561`). The lookup key is the assistant message's `message.model`, which never matches the beta-variant key:
 
 | launch | assistant model | `modelUsage` key | window | match |
 |---|---|---|---|---|
@@ -548,6 +548,8 @@ The window is only reported at turn end — `modelUsage[model].contextWindow` ri
 
 Persist values the SDK reports in the shared, multi-process-locked `~/.happy/settings.json` under `contextWindows`, seeded back into the converter's map at construction. Only observed values are stored — never a guess — so a model's very first turn on this machine is still honestly blank. The converter stays I/O-free: the caller passes a `ContextWindowMemory` (`known` to seed, `onLearned` to persist), and `claudeRemoteLauncher` supplies it; `onLearned` fires only when a value actually changes, so a seeded session that learns nothing writes nothing.
 
+### Files changed
+
 | File | Change |
 |---|---|
 | `packages/happy-cli/src/claude/utils/contextWindowStore.ts` | **New.** `readContextWindows()` / `rememberContextWindow()` over the locked settings file; treats the hand-editable file as untrusted and keeps only positive token counts |
@@ -558,3 +560,31 @@ Persist values the SDK reports in the shared, multi-process-locked `~/.happy/set
 | `packages/happy-cli/src/persistence.ts` | `contextWindows?: Record<string, number>` on `Settings` |
 
 - `convertSDKToLog()` in `sdkToLogConverter.ts` has no callers and was left as-is; it takes no memory, so a hypothetical caller keeps the old turn-1-blank behaviour.
+
+---
+
+## 16. Context Readout Vanishes Mid-Session
+
+### Symptom
+
+Once shown, the context readout could disappear again partway through a session.
+
+### Root cause
+
+`processUsageData` replaced `latestUsage` wholesale. In `reducer.ts`, a message whose `usage` carried no `context_window` produced a new `latestUsage` with no `contextWindow` at all, and the app's gate then renders nothing. Sub-agent turns run on a different model, so the first time one appears — before any result message has reported *that* model's window — its usage arrives windowless and blanks the readout for the main thread.
+
+### Fix
+
+`processUsageData` falls back to the previous `contextWindow` when a message omits it. A message that reports its own window still replaces it, so switching models still corrects the denominator.
+
+### Files changed
+
+| File | Change |
+|---|---|
+| `packages/happy-app/sources/sync/reducer/reducer.ts` | `processUsageData` carries the last known window forward |
+| `packages/happy-app/sources/sync/reducer/reducer.spec.ts` | Carry-forward and still-replaceable cases |
+
+### Notes / scope
+
+- **Local (interactive) mode is unaffected and still shows no readout.** It does not go through `SDKToLogConverter` at all — the watcher forwards Claude's own transcript, which never contains `context_window`. Pre-existing, out of scope here.
+- The carry-forward keeps a denominator from a *different* model for the one windowless sub-agent message, rather than blanking. Self-corrects on the next result. Whether sub-agent usage should drive the composer's readout at all is a separate question — its `contextSize` is the sub-agent's, not the main thread's.
