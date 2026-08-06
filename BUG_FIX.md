@@ -266,3 +266,60 @@ A `labelApiStatus()` helper maps HTTP statuses to short labels, calling out **42
 | `packages/happy-cli/src/claude/sdk/types.ts` | Re-export `SDKAPIRetryMessage` from the SDK |
 | `packages/happy-cli/src/claude/sdk/index.ts` | Re-export `SDKAPIRetryMessage` |
 | `packages/happy-cli/src/claude/claudeRemote.test.ts` | Tests for api_retry surfacing, terminal 429 result, and error-subtype result |
+
+---
+
+## 9. Context Used/Total and "% Left" Disappear on Opus 5
+
+### Symptom
+
+The composer status row stopped showing both context readouts — the `% left` warning and the `180k/1M` used/total chip. Nothing else about the row changed: project name, connection status and the quota chip were all still there.
+
+Confusingly, the model picker showed **opus 4.8** — a model on which the readouts had always worked.
+
+### Root cause
+
+Two independent bugs compounding.
+
+**a) `modelUsage` keys the 1M Opus 5 variant as `claude-opus-5[1m]`, while assistant messages report `claude-opus-5`.**
+
+The SDK reports a model's real context window only on `result` messages (`modelUsage[model].contextWindow`), so `SDKToLogConverter` remembers it per model and stamps it onto later assistant `usage.context_window` (see `NEW_FEATURES.md` section 8). The lookup key is the assistant message's `message.model`, which never matches the beta-variant key:
+
+| launch | assistant model | `modelUsage` key | window | match |
+|---|---|---|---|---|
+| `--model opus` | `claude-opus-5` | `claude-opus-5[1m]` | 1M | ✗ |
+| `--model claude-opus-5` | `claude-opus-5` | `claude-opus-5` | 200k | ✓ |
+| `--model claude-opus-5 --betas=context-1m-2025-08-07` | `claude-opus-5` | `claude-opus-5` | 1M | ✓ |
+| `--model claude-opus-4-8` | `claude-opus-4-8` | `claude-opus-4-8` | 200k | ✓ |
+| `--model claude-opus-4-8 --betas=context-1m-2025-08-07` | `claude-opus-4-8` | `claude-opus-4-8` | 1M | ✓ |
+
+(measured with `claude --print --output-format stream-json --verbose` on apple-claude-code 2.1.143)
+
+The `[1m]` suffix is Opus-5-only — 4.8 keeps the plain key even with the 1M beta enabled. With no window recorded under the canonical name, `usage.context_window` is never stamped, and the app deliberately renders nothing rather than divide by a guessed denominator (`AgentInput.tsx`'s `getContextWarning` and `contextUsage`), so both readouts vanish together.
+
+**b) The picker's `opus 4.8` entry selected Opus 5.**
+
+`getClaudeModelModes()` offered `{ key: 'opus', name: 'opus 4.8' }`. The CLI's `opus` alias now resolves to `claude-opus-5[1m]` — Opus 5 at 1M, without any beta flag being passed. So the entry labelled 4.8 was precisely the one broken variant, real 4.8 was unreachable from the picker, and the badge misreported the running model. This is why the symptom looked impossible: the readouts were missing on the one model where they had never failed.
+
+### Fix
+
+**a)** Record the window under the canonical model name as well as the raw key. The SDK reports the mapping as `canonicalModel` — a runtime field its published `ModelUsage` type omits — so read it defensively and fall back to stripping a trailing `[...]` suffix. Both names are recorded so a message naming the variant outright still resolves; later turns overwrite, keeping the window current across model switches.
+
+**b)** Key the entry by the full model ID, `claude-opus-4-8`, which passes straight through to the API — the same reasoning as the `claude-opus-5` entry above it.
+
+Removing `opus` from the offered list left `codeAgentDefaults.claude.modelMode` pointing outside it, which would render the default as a `custom` entry via `withCustomModelOption`. Moved that default to `claude-opus-5`: identical effective model (Opus 5 at 1M, once `claudeRemote` adds the beta) with a key that stays in the list. A test pins the invariant.
+
+### Files changed
+
+| File | Change |
+|---|---|
+| `packages/happy-cli/src/claude/utils/sdkToLogConverter.ts` | `canonicalModelName()` helper; record the window under both the raw key and the canonical name |
+| `packages/happy-cli/src/claude/utils/sdkToLogConverter.test.ts` | Variant-key, missing-`canonicalModel`, and raw-variant-message cases |
+| `packages/happy-app/sources/components/modelModeOptions.ts` | `opus 4.8` entry keyed `claude-opus-4-8` instead of the `opus` alias |
+| `packages/happy-app/sources/sync/agentDefaults.ts` | Claude default `modelMode` `opus` → `claude-opus-5` |
+| `packages/happy-app/sources/components/modelModeOptions.test.ts` | Updated key list and default; new test that the default stays inside the offered list |
+
+### Notes / scope
+
+- `runClaude.ts`'s `DEFAULT_CLAUDE_MODEL = 'opus'` is deliberately left as the alias: it is a CLI-side default for a bare `happy claude`, not a user-facing label, and fix (a) covers its readout.
+- Sessions with `modelMode: 'opus'` already persisted keep working and show as `opus / custom` in the picker until re-selected.

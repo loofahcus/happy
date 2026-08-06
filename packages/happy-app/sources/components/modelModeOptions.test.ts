@@ -57,7 +57,7 @@ describe('modelModeOptions', () => {
         expect(models.map((model) => model.key)).toEqual([
             'default',
             'claude-opus-5',
-            'opus',
+            'claude-opus-4-8',
             'fable',
             'sonnet',
             'haiku',
@@ -71,11 +71,17 @@ describe('modelModeOptions', () => {
 
     it('uses code defaults for agent defaults', () => {
         expect(getDefaultPermissionModeKey('claude')).toBe('bypassPermissions');
-        expect(getDefaultModelKey('claude')).toBe('opus');
+        expect(getDefaultModelKey('claude')).toBe('claude-opus-5');
         expect(getDefaultEffortKey('claude')).toBe('medium');
         expect(getDefaultPermissionModeKey('codex')).toBe('yolo');
         expect(getDefaultModelKey('codex')).toBe('gpt-5.5');
         expect(getDefaultEffortKey('codex')).toBe('medium');
+    });
+
+    it('keeps the claude default model inside the offered list', () => {
+        const keys = getClaudeModelModes().map((model) => model.key);
+
+        expect(keys).toContain(getDefaultModelKey('claude'));
     });
 
     it('prefers metadata models over hardcoded fallbacks', () => {

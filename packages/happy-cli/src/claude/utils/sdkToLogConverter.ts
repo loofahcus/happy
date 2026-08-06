@@ -44,6 +44,23 @@ function getGitBranch(cwd: string): string | undefined {
 }
 
 /**
+ * Canonical model name behind a `modelUsage` key.
+ *
+ * Beta context variants key usage as `claude-opus-5[1m]` while the assistant
+ * messages of the same turn report the plain `claude-opus-5`, so the raw key
+ * alone never matches. The SDK reports the mapping as `canonicalModel` — a
+ * runtime field its published types omit — so read it defensively and fall
+ * back to stripping the bracketed suffix.
+ */
+function canonicalModelName(key: string, usage: unknown): string {
+    const reported = (usage as { canonicalModel?: unknown } | undefined)?.canonicalModel
+    if (typeof reported === 'string' && reported.length > 0) {
+        return reported
+    }
+    return key.replace(/\[[^\]]*\]$/, '')
+}
+
+/**
  * SDK to Log converter class
  * Maintains state for parent-child relationships between messages
  */
@@ -223,7 +240,12 @@ export class SDKToLogConverter {
                 for (const [model, usage] of Object.entries(resultMsg.modelUsage ?? {})) {
                     const contextWindow = usage?.contextWindow
                     if (typeof contextWindow === 'number' && Number.isFinite(contextWindow) && contextWindow > 0) {
+                        // Recorded under both names: assistant messages carry
+                        // the canonical one, but a message naming the variant
+                        // outright should resolve too. Later turns overwrite,
+                        // so switching models keeps the window current.
                         this.contextWindowByModel.set(model, contextWindow)
+                        this.contextWindowByModel.set(canonicalModelName(model, usage), contextWindow)
                     }
                 }
                 break

@@ -30,7 +30,10 @@ export type AgentDefaultConfig = {
 const codeAgentDefaults: Record<AgentKey, AgentDefaultConfig> = {
     // The Claude UI key for YOLO is `bypassPermissions`; the CLI also accepts
     // `yolo` and maps it to the Claude SDK's bypass mode.
-    claude: { permissionMode: 'bypassPermissions', modelMode: 'opus', effortLevel: 'medium' },
+    // `claude-opus-5` rather than the `opus` alias: both land on Opus 5 with a
+    // 1M window, but the alias resolves to `claude-opus-5[1m]`, which no longer
+    // appears in the offered list and would render as a "custom" entry.
+    claude: { permissionMode: 'bypassPermissions', modelMode: 'claude-opus-5', effortLevel: 'medium' },
     codex: { permissionMode: 'yolo', modelMode: 'gpt-5.5', effortLevel: 'medium' },
     gemini: { permissionMode: 'default', modelMode: 'gemini-2.5-pro', effortLevel: null },
     openclaw: { permissionMode: 'default', modelMode: 'default', effortLevel: null },

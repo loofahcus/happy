@@ -100,7 +100,10 @@ export function getClaudeModelModes(): ModelMode[] {
         // CLI's alias table yet (`claude --model opus-5` errors on 2.1.199),
         // while the full ID passes straight through to the API.
         { key: 'claude-opus-5', name: 'opus 5', description: null },
-        { key: 'opus', name: 'opus 4.8', description: null },
+        // Full model ID for the same reason, plus one of its own: the `opus`
+        // alias now resolves to `claude-opus-5[1m]`, so it selected Opus 5 while
+        // the label still said 4.8. The full ID is the only way to pin 4.8.
+        { key: 'claude-opus-4-8', name: 'opus 4.8', description: null },
         { key: 'fable', name: 'fable 5', description: null },
         { key: 'sonnet', name: 'sonnet 4.6', description: null },
         { key: 'haiku', name: 'haiku 4.5', description: null },

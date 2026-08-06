@@ -228,7 +228,7 @@ describe('SDKToLogConverter', () => {
             }
         } as unknown as SDKAssistantMessage)
 
-        const resultReporting = (modelUsage: Record<string, { contextWindow: number }>) => ({
+        const resultReporting = (modelUsage: Record<string, { contextWindow: number, canonicalModel?: string }>) => ({
             type: 'result',
             subtype: 'success',
             is_error: false,
@@ -265,6 +265,38 @@ describe('SDKToLogConverter', () => {
 
             expect((haiku as any)?.message.usage.context_window).toBe(200_000)
             expect((opus as any)?.message.usage.context_window).toBe(1_000_000)
+        })
+
+        it('should stamp the window when the usage key is a variant of the message model', () => {
+            // Beta variants (1M context) key modelUsage as `claude-opus-5[1m]`
+            // while assistant messages report the canonical `claude-opus-5`.
+            converter.convert(resultReporting({
+                'claude-opus-5[1m]': { contextWindow: 1_000_000, canonicalModel: 'claude-opus-5' }
+            }))
+
+            const logMessage = converter.convert(assistantWithUsage('claude-opus-5'))
+
+            expect((logMessage as any)?.message.usage.context_window).toBe(1_000_000)
+        })
+
+        it('should derive the canonical model when the result omits it', () => {
+            converter.convert(resultReporting({
+                'claude-opus-5[1m]': { contextWindow: 1_000_000 }
+            }))
+
+            const logMessage = converter.convert(assistantWithUsage('claude-opus-5'))
+
+            expect((logMessage as any)?.message.usage.context_window).toBe(1_000_000)
+        })
+
+        it('should still match a message whose model is the raw variant key', () => {
+            converter.convert(resultReporting({
+                'claude-opus-5[1m]': { contextWindow: 1_000_000, canonicalModel: 'claude-opus-5' }
+            }))
+
+            const logMessage = converter.convert(assistantWithUsage('claude-opus-5[1m]'))
+
+            expect((logMessage as any)?.message.usage.context_window).toBe(1_000_000)
         })
 
         it('should ignore unusable window values', () => {
