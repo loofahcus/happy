@@ -588,3 +588,49 @@ Once shown, the context readout could disappear again partway through a session.
 
 - **Local (interactive) mode is unaffected and still shows no readout.** It does not go through `SDKToLogConverter` at all — the watcher forwards Claude's own transcript, which never contains `context_window`. Pre-existing, out of scope here.
 - The carry-forward keeps a denominator from a *different* model for the one windowless sub-agent message, rather than blanking. Self-corrects on the next result. Whether sub-agent usage should drive the composer's readout at all is a separate question — its `contextSize` is the sub-agent's, not the main thread's.
+
+---
+
+## 17. Output Bursts Stall the Client's Ordered Decrypt Queue
+
+### Symptom
+
+Terminal responsiveness degrades while output is flowing: the echo of a keystroke typed during a command's output arrives late, well beyond the round trip it should have cost.
+
+### Root cause
+
+`apiSocket.attachEncryptedListeners` serializes decrypt-and-dispatch per `(event, scope)`. That serialization is necessary and deliberate — `rn-encryption`'s decrypt is genuinely asynchronous, and two decrypts that *start* in order can *finish* out of order, which scrambles a byte stream (this is the bug fixed by the sequencer in `NEW_FEATURES.md` section 5). But it means the queue is strictly FIFO: anything behind a backlog waits for all of it.
+
+The daemon was filling that queue with one socket event per PTY chunk. A shell redrawing its prompt line emits many tiny writes in quick succession, and each one cost a separate encrypt, socket frame, relay hop, and ordered decrypt on the client. Measured with node-pty against `bash --norc`:
+
+| Command | Bytes | Socket events |
+|---|---|---|
+| `ls -la` | 2007 | 4 |
+| `echo hello` | 38 | 4 |
+| a single keystroke's echo | 1 | 1 |
+
+Note the last row: **a single keystroke already costs exactly one event.** Chunk count is not what makes per-key echo feel slow (that is four network legs — see `NEW_FEATURES.md` section 10). What the fan-out does hurt is the keystroke typed *during* output, which lands behind the backlog.
+
+### Fix
+
+Concatenate queued chunks into as few payloads as the segment limit allows, with a **trailing-only** window:
+
+- The first chunk after an idle period goes out **immediately**. A lone keystroke's echo is therefore never delayed by a single millisecond.
+- Only the followers — which by definition already lost the race — wait out an 8 ms window and travel merged.
+
+Measured after the change: `ls -la` and `echo hello` drop from 4 events to 1; single-keystroke echo stays at 1 event with no added latency.
+
+The merge itself is a pure function in its own module so it is testable without node-pty or a socket. Per-terminal timers are cleared when a terminal is destroyed, rather than left alive on a dead entry.
+
+### Files changed
+
+| File | Change |
+|---|---|
+| `packages/happy-cli/src/modules/terminal/outputCoalescer.ts` | **New.** `coalesceSegments()` — order-preserving merge, splits an oversized chunk, drops empties. |
+| `packages/happy-cli/src/modules/terminal/outputCoalescer.test.ts` | **New.** Merge, segment-limit splitting, oversized chunks, empty chunks, order preservation. |
+| `packages/happy-cli/src/modules/terminal/terminalHandler.ts` | Leading-edge-immediate + 8 ms trailing coalesce; `disposeOutputState()` clears the timer with the terminal. |
+
+### Notes / scope
+
+- `COALESCE_MS = 8` is a throughput/latency trade that only ever applies to followers. Raising it merges more of a long burst (an 8 ms window already collapses these commands to one event) at no cost to interactive echo.
+- The client's sequencer is left exactly as it is. It is load-bearing for correctness; this reduces what it has to carry.

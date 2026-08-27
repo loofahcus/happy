@@ -1,6 +1,7 @@
 import { logger } from "@/ui/logger";
 import { RpcHandlerManager } from "@/api/rpc/RpcHandlerManager";
 import { PtyProvider } from "./ptyProvider";
+import { coalesceSegments } from "./outputCoalescer";
 import {
   TERMINAL_DEFAULTS,
   TERMINAL_EVENTS,
@@ -17,11 +18,22 @@ import {
 } from "@slopus/happy-wire";
 
 const SEGMENT_BYTES = TERMINAL_DEFAULTS.segmentBytes;
-const FLUSH_BATCH = 8;
+
+// A shell redrawing its prompt line emits many tiny writes in quick
+// succession, and every event costs a separate encrypt, socket frame, relay
+// hop, and ordered decrypt on the client. Chunks that arrive while an emit is
+// already in flight are concatenated into one payload instead.
+//
+// The window is trailing only: the first chunk after an idle period goes out
+// immediately, so a single keystroke's echo is never delayed. Only the
+// followers — which by definition already lost the race — get batched.
+const COALESCE_MS = 8;
 
 interface OutputState {
   pending: string[];
-  flushing: boolean;
+  timer: ReturnType<typeof setTimeout> | null;
+  /** Set once the leading chunk has gone out, so followers wait for the window. */
+  emitted: boolean;
 }
 
 const outputStates = new Map<string, OutputState>();
@@ -29,51 +41,36 @@ const outputStates = new Map<string, OutputState>();
 function getOutputState(terminalId: string): OutputState {
   let state = outputStates.get(terminalId);
   if (!state) {
-    state = { pending: [], flushing: false };
+    state = { pending: [], timer: null, emitted: false };
     outputStates.set(terminalId, state);
   }
   return state;
 }
 
-async function flushOutput(
-  terminalId: string,
-  rpc: RpcHandlerManager,
-): Promise<void> {
+function flushOutput(terminalId: string, rpc: RpcHandlerManager): void {
   const state = outputStates.get(terminalId);
-  if (!state || state.flushing) return;
-  state.flushing = true;
-
-  try {
-    while (state.pending.length > 0) {
-      let emitted = 0;
-      while (emitted < FLUSH_BATCH && state.pending.length > 0) {
-        const next = state.pending.shift()!;
-        if (next.length <= SEGMENT_BYTES) {
-          rpc.emitEncryptedEvent(TERMINAL_EVENTS.output, {
-            terminalId,
-            data: next,
-          });
-        } else {
-          // Rare: a single chunk larger than the segment limit — split it.
-          for (let i = 0; i < next.length; i += SEGMENT_BYTES) {
-            rpc.emitEncryptedEvent(TERMINAL_EVENTS.output, {
-              terminalId,
-              data: next.slice(i, i + SEGMENT_BYTES),
-            });
-          }
-        }
-        emitted++;
-      }
-      if (state.pending.length > 0) {
-        await new Promise<void>((resolve) => setImmediate(resolve));
-      }
-    }
-  } finally {
-    state.flushing = false;
-    if (state.pending.length > 0) {
-      void flushOutput(terminalId, rpc);
-    }
+  if (!state) return;
+  if (state.timer) {
+    clearTimeout(state.timer);
+    state.timer = null;
   }
+  if (state.pending.length === 0) {
+    // Idle: the next chunk is a leading edge again and goes out immediately.
+    state.emitted = false;
+    return;
+  }
+  const payloads = coalesceSegments(state.pending, SEGMENT_BYTES);
+  state.pending = [];
+  for (const data of payloads) {
+    rpc.emitEncryptedEvent(TERMINAL_EVENTS.output, { terminalId, data });
+  }
+  state.emitted = true;
+  // Re-arm so a burst that keeps arriving keeps draining, and so `emitted`
+  // resets once the shell goes quiet.
+  state.timer = setTimeout(() => {
+    state.timer = null;
+    flushOutput(terminalId, rpc);
+  }, COALESCE_MS);
 }
 
 function enqueueOutput(
@@ -83,9 +80,23 @@ function enqueueOutput(
 ): void {
   const state = getOutputState(terminalId);
   state.pending.push(data);
-  if (!state.flushing) {
-    void flushOutput(terminalId, rpc);
+  if (!state.emitted) {
+    // Leading edge — no delay.
+    flushOutput(terminalId, rpc);
+    return;
   }
+  if (!state.timer) {
+    state.timer = setTimeout(() => {
+      state.timer = null;
+      flushOutput(terminalId, rpc);
+    }, COALESCE_MS);
+  }
+}
+
+function disposeOutputState(terminalId: string): void {
+  const state = outputStates.get(terminalId);
+  if (state?.timer) clearTimeout(state.timer);
+  outputStates.delete(terminalId);
 }
 
 let sharedProvider: PtyProvider | null = null;
@@ -125,12 +136,13 @@ export function registerTerminalHandlers(
             enqueueOutput(data.terminalId, output, rpc);
           },
           onExit() {
-            void flushOutput(data.terminalId, rpc).then(() => {
-              outputStates.delete(data.terminalId);
-              rpc.emitEncryptedEvent(TERMINAL_EVENTS.closed, {
-                terminalId: data.terminalId,
-                reason: "process_exit",
-              });
+            // Synchronous, so whatever the process wrote on its way out is
+            // emitted before the closed event rather than racing it.
+            flushOutput(data.terminalId, rpc);
+            disposeOutputState(data.terminalId);
+            rpc.emitEncryptedEvent(TERMINAL_EVENTS.closed, {
+              terminalId: data.terminalId,
+              reason: "process_exit",
             });
           },
         },
@@ -196,7 +208,7 @@ export function registerTerminalHandlers(
   rpc.registerHandler(TERMINAL_RPC_METHODS.destroy, (raw) => {
     const data = terminalDestroyRequestSchema.parse(raw);
     pty.destroy(data.terminalId);
-    outputStates.delete(data.terminalId);
+    disposeOutputState(data.terminalId);
     return { success: true };
   });
 
@@ -221,5 +233,7 @@ export function registerTerminalHandlers(
 
 export function destroyAllTerminals(): void {
   getTerminalProvider().destroyAll();
-  outputStates.clear();
+  for (const terminalId of [...outputStates.keys()]) {
+    disposeOutputState(terminalId);
+  }
 }
