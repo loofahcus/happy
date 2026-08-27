@@ -16,7 +16,11 @@ import {
   type TerminalResizeRequest,
   type TerminalDestroyRequest,
 } from "@slopus/happy-wire";
-import { describeBytes, stripTerminalResponses } from "./terminalKeys";
+import {
+  describeBytes,
+  stripTerminalResponses,
+  toControlCode,
+} from "./terminalKeys";
 
 // ── Input diagnostics ────────────────────────────────────────────────
 //
@@ -60,12 +64,24 @@ function clearTerminalId(sessionId: string): void {
   } catch {}
 }
 
+/** Raw byte writer for the on-screen key bar. */
+export type TerminalKeySender = (data: string) => void;
+
 interface TerminalProps {
   sessionId: string;
   isDark: boolean;
   isActive: boolean;
   onDestroyReady?: (destroy: () => void) => void;
   onStatusChange?: (status: TerminalStatus) => void;
+  /**
+   * Sticky Ctrl from the key bar: while armed, the next printable character
+   * typed on the soft keyboard is folded into its control code. Translation
+   * has to happen here because the soft keyboard's characters only surface in
+   * xterm's `onData`, well past any key event a button could intercept.
+   */
+  ctrlArmed?: boolean;
+  onCtrlConsumed?: () => void;
+  onKeySenderReady?: (send: TerminalKeySender) => void;
 }
 
 export type TerminalStatus =
@@ -80,6 +96,9 @@ export function Terminal({
   isActive,
   onDestroyReady,
   onStatusChange,
+  ctrlArmed = false,
+  onCtrlConsumed,
+  onKeySenderReady,
 }: TerminalProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const xtermRef = useRef<{ term: XTerm; fit: FitAddon } | null>(null);
@@ -94,6 +113,11 @@ export function Terminal({
   // Stamped when a keystroke leaves, read by the first output that follows, to
   // measure the real echo round trip (app → server → daemon → shell → back).
   const lastInputAtRef = useRef<number | null>(null);
+  const ctrlArmedRef = useRef(ctrlArmed);
+  ctrlArmedRef.current = ctrlArmed;
+  const onCtrlConsumedRef = useRef(onCtrlConsumed);
+  onCtrlConsumedRef.current = onCtrlConsumed;
+  isActiveRef.current = isActive;
   sessionIdRef.current = sessionId;
 
   const [status, setStatusRaw] = useState<TerminalStatus>("disconnected");
@@ -275,7 +299,14 @@ export function Terminal({
           diag(terminal, "onData", "DROPPED — not attached");
           return;
         }
-        const filtered = stripTerminalResponses(rawData);
+        let data = rawData;
+        if (ctrlArmedRef.current) {
+          // Consume the modifier whatever the next character is, so a key with
+          // no control code disarms it instead of latching on.
+          onCtrlConsumedRef.current?.();
+          data = toControlCode(rawData) ?? rawData;
+        }
+        const filtered = stripTerminalResponses(data);
         if (filtered) {
           lastInputAtRef.current = performance.now();
           void apiSocket
@@ -288,7 +319,7 @@ export function Terminal({
               diag(terminal, "send", `FAILED ${String(err)}`),
             );
         } else {
-          diag(terminal, "filter", `DROPPED all of ${describeBytes(rawData)}`);
+          diag(terminal, "filter", `DROPPED all of ${describeBytes(data)}`);
         }
       });
 
@@ -435,6 +466,21 @@ export function Terminal({
   }, [sessionId, connectOrAttach]);
 
   // ── Expose destroy function to parent ─────────────────────────────────
+
+  useEffect(() => {
+    onKeySenderReady?.((data: string) => {
+      const tid = terminalIdRef.current;
+      const sid = sessionIdRef.current;
+      if (!tid || !attachedRef.current) return;
+      void apiSocket.sendEncryptedSessionEvent(sid, TERMINAL_EVENTS.input, {
+        terminalId: tid,
+        data,
+      });
+      // The bar sits outside the terminal, so a tap moves focus off the helper
+      // textarea and closes the soft keyboard. Put it back.
+      xtermRef.current?.term.focus();
+    });
+  }, [onKeySenderReady]);
 
   useEffect(() => {
     onDestroyReady?.(() => {

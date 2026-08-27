@@ -7,12 +7,17 @@ export type TerminalStatus =
   | "connected"
   | "closed";
 
+export type TerminalKeySender = (data: string) => void;
+
 interface TerminalProps {
   sessionId: string;
   isDark: boolean;
   isActive: boolean;
   onDestroyReady?: (destroy: () => void) => void;
   onStatusChange?: (status: TerminalStatus) => void;
+  ctrlArmed?: boolean;
+  onCtrlConsumed?: () => void;
+  onKeySenderReady?: (send: TerminalKeySender) => void;
 }
 
 export function Terminal({ isDark }: TerminalProps) {

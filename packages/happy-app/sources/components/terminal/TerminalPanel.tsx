@@ -1,8 +1,9 @@
-import { useRef, useState, useCallback } from "react";
+import { useRef, useState, useCallback, useEffect } from "react";
 import { Platform, Pressable, Text, View } from "react-native";
 import { useUnistyles } from "react-native-unistyles";
 import { Ionicons } from "@expo/vector-icons";
-import { Terminal, type TerminalStatus } from "./Terminal";
+import { Terminal, type TerminalStatus, type TerminalKeySender } from "./Terminal";
+import { TERMINAL_KEYS } from "./terminalKeys";
 
 const STATUS_CONFIG: Record<
   TerminalStatus,
@@ -18,6 +19,49 @@ const MIN_HEIGHT = 120;
 const MAX_HEIGHT = 600;
 const DEFAULT_HEIGHT = 300;
 
+// Keys a soft keyboard has no way to produce. Ctrl is a sticky modifier
+// handled separately; everything here writes its bytes straight through.
+const KEY_BAR: { label: string; data: string; wide?: boolean }[] = [
+  { label: "Esc", data: TERMINAL_KEYS.escape, wide: true },
+  { label: "Tab", data: TERMINAL_KEYS.tab, wide: true },
+  { label: "^C", data: TERMINAL_KEYS.interrupt },
+  { label: "\u2190", data: TERMINAL_KEYS.left },
+  { label: "\u2192", data: TERMINAL_KEYS.right },
+  { label: "\u2191", data: TERMINAL_KEYS.up },
+  { label: "\u2193", data: TERMINAL_KEYS.down },
+];
+
+// Only phones and tablets need the bar; a desktop browser already has the keys.
+//
+// Subscribed rather than sampled once at module load: a desktop browser toggled
+// into device emulation changes pointer type without a reload, and that is
+// exactly how this gets tested. The panel itself is web-only, so there is no
+// native branch to carry.
+const COARSE_POINTER_QUERY = "(pointer: coarse)";
+
+function useCoarsePointer(): boolean {
+  const [coarse, setCoarse] = useState(() => {
+    try {
+      return window.matchMedia(COARSE_POINTER_QUERY).matches;
+    } catch {
+      return false;
+    }
+  });
+  useEffect(() => {
+    let media: MediaQueryList;
+    try {
+      media = window.matchMedia(COARSE_POINTER_QUERY);
+    } catch {
+      return;
+    }
+    const onChange = (event: MediaQueryListEvent) => setCoarse(event.matches);
+    media.addEventListener("change", onChange);
+    setCoarse(media.matches);
+    return () => media.removeEventListener("change", onChange);
+  }, []);
+  return coarse;
+}
+
 interface TerminalPanelProps {
   sessionId: string;
   onClose: () => void;
@@ -32,6 +76,9 @@ export function TerminalPanel({
   const destroyRef = useRef<(() => void) | null>(null);
   const [status, setStatus] = useState<TerminalStatus>("disconnected");
   const [height, setHeight] = useState(DEFAULT_HEIGHT);
+  const [ctrlArmed, setCtrlArmed] = useState(false);
+  const isTouch = useCoarsePointer();
+  const sendKeyRef = useRef<TerminalKeySender | null>(null);
   const draggingRef = useRef(false);
   const startYRef = useRef(0);
   const startHeightRef = useRef(DEFAULT_HEIGHT);
@@ -160,8 +207,95 @@ export function TerminalPanel({
             destroyRef.current = fn;
           }}
           onStatusChange={setStatus}
+          ctrlArmed={ctrlArmed}
+          onCtrlConsumed={() => setCtrlArmed(false)}
+          onKeySenderReady={(send) => {
+            sendKeyRef.current = send;
+          }}
         />
       </View>
+      {isTouch && (
+        <View
+          style={{
+            flexDirection: "row",
+            alignItems: "center",
+            gap: 6,
+            paddingHorizontal: 8,
+            paddingVertical: 6,
+            borderTopWidth: 1,
+            borderTopColor: theme.colors.surfaceHighest,
+          }}
+        >
+          <KeyBarButton
+            label="Ctrl"
+            wide
+            active={ctrlArmed}
+            isDark={isDark}
+            onPress={() => setCtrlArmed((armed) => !armed)}
+          />
+          {KEY_BAR.map((key) => (
+            <KeyBarButton
+              key={key.label}
+              label={key.label}
+              wide={key.wide}
+              isDark={isDark}
+              onPress={() => sendKeyRef.current?.(key.data)}
+            />
+          ))}
+        </View>
+      )}
     </View>
+  );
+}
+
+function KeyBarButton({
+  label,
+  data: _data,
+  wide,
+  active,
+  isDark,
+  onPress,
+}: {
+  label: string;
+  data?: string;
+  wide?: boolean;
+  active?: boolean;
+  isDark: boolean;
+  onPress: () => void;
+}) {
+  const { theme } = useUnistyles();
+  return (
+    <Pressable
+      onPress={onPress}
+      // A default browser mousedown would blur the terminal's helper textarea
+      // and dismiss the soft keyboard before onPress ever runs.
+      {...({
+        onMouseDown: (e: any) => e.preventDefault(),
+        onTouchStart: (e: any) => e.preventDefault(),
+      } as any)}
+      style={({ pressed }) => ({
+        flex: wide ? 1.4 : 1,
+        minHeight: 34,
+        alignItems: "center",
+        justifyContent: "center",
+        borderRadius: 6,
+        backgroundColor: active
+          ? theme.colors.status.connecting
+          : isDark
+            ? "rgba(255,255,255,0.10)"
+            : "rgba(0,0,0,0.07)",
+        opacity: pressed ? 0.6 : 1,
+      })}
+    >
+      <Text
+        style={{
+          fontSize: 13,
+          fontWeight: "600",
+          color: active ? "#1a1b26" : theme.colors.textSecondary,
+        }}
+      >
+        {label}
+      </Text>
+    </Pressable>
   );
 }

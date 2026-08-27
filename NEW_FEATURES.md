@@ -385,3 +385,46 @@ A machine-scoped project token drives everything, and a per-session quota sample
 
 - CLI: `utils/quota.ts`, `utils/floodgateProject.ts` (+ test), `persistence.ts`, `api/types.ts`, `api/apiMachine.ts`, `claude/claudeLocal.ts`, `claude/claudeRemote.ts`, `claude/claudeRemoteLauncher.ts`, `claude/runClaude.ts`.
 - App: `components/AgentInput.tsx` (`quota` on the usage row, `formatQuotaBudget`, `getQuotaColor`), `sync/storageTypes.ts`, `sync/ops.ts`, `app/(app)/machine/[id].tsx`, `-session/SessionView.tsx`, `text/_default.ts` + all `translations/*.ts`.
+
+---
+
+## 9. On-Screen Key Bar for the Terminal on Phones
+
+### Problem
+
+A phone's soft keyboard has no Esc, Tab, Ctrl, or arrow keys — exactly the keys a terminal needs most. On a phone the web terminal could accept text and nothing else: no completion, no history, no interrupting a runaway command.
+
+### Design
+
+A row of buttons under the terminal, shown only when `window.matchMedia('(pointer: coarse)')` matches, so a desktop browser (which already has the keys) is untouched.
+
+| Button | Bytes |
+|---|---|
+| `Ctrl` | sticky modifier, see below |
+| `Esc` | `\x1b` |
+| `Tab` | `\t` |
+| `^C` | `\x03` |
+| `← → ↑ ↓` | `\x1b[D` `\x1b[C` `\x1b[A` `\x1b[B` |
+
+**Sticky Ctrl.** The translation happens inside xterm's `onData`, not in a key handler. This is forced: a soft keyboard's characters only surface as `onData` (they arrive through IME composition, past any `keydown` a button could intercept), so `onData` is the single place where "the next character" can be caught. While armed, a printable character is folded into its control code — `a`..`z` → `0x01`..`0x1a`, plus the traditional `@ [ \ ] ^ _ ?` and space codes. A character with **no** control code disarms the modifier and is sent unchanged rather than swallowed, so a mis-tap costs one keystroke instead of eating input silently.
+
+**Keeping the keyboard open.** A tap on a button would, by default, blur xterm's helper textarea and dismiss the soft keyboard before `onPress` even ran. The buttons `preventDefault()` on `onMouseDown`/`onTouchStart`, and the send path re-focuses the terminal afterwards.
+
+**Bypassing the response filter.** Key-bar bytes go straight out without `stripTerminalResponses`. They are synthesized by our own buttons, not echoed device replies, and the filter has no business inspecting them.
+
+### Files changed
+
+| File | Change |
+|---|---|
+| `packages/happy-app/sources/components/terminal/terminalKeys.ts` | Adds `TERMINAL_KEYS` (the byte table) and `toControlCode` (printable → control code). |
+| `packages/happy-app/sources/components/terminal/terminalKeys.test.ts` | Control-code folding for letters, punctuation, and the no-control-code cases; the key-bar bytes surviving the response filter. |
+| `packages/happy-app/sources/components/terminal/TerminalPanel.tsx` | The bar itself, `KeyBarButton`, sticky-Ctrl state, coarse-pointer gate. |
+| `packages/happy-app/sources/components/terminal/Terminal.web.tsx` | `ctrlArmed` / `onCtrlConsumed` / `onKeySenderReady` props; control folding in `onData`; raw-byte sender that re-focuses the terminal. |
+| `packages/happy-app/sources/components/terminal/Terminal.tsx` | Prop parity on the native stub. |
+
+### Notes
+
+- Web only, like the rest of the terminal — the native stub still says the terminal lives on desktop and web.
+- The panel's height drag handle is still mouse-only (`onMouseDown` + `mousemove`), so it cannot be dragged on a phone. Not addressed here.
+- Needs device validation; there is no way to exercise a soft keyboard from CI.
+- **Bug found and fixed**: the coarse-pointer check was sampled once at module load (`IS_TOUCH`), so a desktop browser toggled into device emulation never grew the key bar without a reload — exactly how it gets tested. Replaced with `useCoarsePointer()`, a subscribed `matchMedia` hook. Its dead `Platform.OS !== 'web'` branch is gone too — the panel is web-only.
