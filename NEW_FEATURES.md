@@ -428,3 +428,65 @@ A row of buttons under the terminal, shown only when `window.matchMedia('(pointe
 - The panel's height drag handle is still mouse-only (`onMouseDown` + `mousemove`), so it cannot be dragged on a phone. Not addressed here.
 - Needs device validation; there is no way to exercise a soft keyboard from CI.
 - **Bug found and fixed**: the coarse-pointer check was sampled once at module load (`IS_TOUCH`), so a desktop browser toggled into device emulation never grew the key bar without a reload — exactly how it gets tested. Replaced with `useCoarsePointer()`, a subscribed `matchMedia` hook. Its dead `Platform.OS !== 'web'` branch is gone too — the panel is web-only.
+
+---
+
+## 10. Speculative Local Echo for the Terminal
+
+### Problem
+
+Typing in the terminal feels laggy on a phone: a visible delay between pressing a key and seeing the character.
+
+The instinct is that the input path blocks. It does not — `onData` fires `void apiSocket.sendEncryptedSessionEvent(...)` and returns immediately. The real mechanism is that **xterm never echoes what you type**. The character you see is the *shell's* echo, which has to complete four network legs first:
+
+```
+app → server → daemon → pty            (keystroke)
+pty → daemon → server → app            (echo)
+```
+
+Nothing on either end is slow — the daemon's PTY read and emit are synchronous, the server relay is in-memory socket.io with no database — so no amount of local optimization moves this number. Only not waiting for it does.
+
+### Design
+
+Draw the character locally the moment it is typed, and take the prediction back when the shell's authoritative output arrives. This is Mosh's speculative local echo, narrowed by one concession that makes it tractable: **command-level latency is acceptable, only typing needs to feel immediate.** So Enter is never predicted — and Enter is exactly the natural resynchronization point.
+
+The whole design is about *not* predicting where prediction would be wrong.
+
+#### The security property
+
+`sudo` and `ssh` turn the tty's ECHO off. Drawing a character locally at a password prompt would put the password on screen.
+
+> Prediction requires having **observed** the shell echo a character at the current prompt. The first character after every prompt is a probe: it is sent, nothing is drawn, and only its returning echo grants the confirmation. With ECHO off that confirmation never arrives, so not one character is ever drawn.
+
+Cost: one un-predicted character per prompt. Benefit: a password cannot leak. A test asserts it directly — `'correct horse battery staple'` typed at an unconfirmed prompt predicts nothing, however long it runs.
+
+Output only *earns* the confirmation when a keystroke is actually outstanding. Otherwise a background process printing at a password prompt would hand out a confirmation nobody observed.
+
+#### Everything else that suppresses prediction
+
+| Condition | Why |
+|---|---|
+| Alternate screen buffer | vim/less/htop: keys are commands, not text |
+| Enter, Ctrl-C, arrows, Tab, Esc, Backspace | each changes what the line means; also **drops** the confirmation, so the next character re-earns it |
+| A paste (more than one character) | same, and the shell may reformat it |
+| Cursor within 2 columns of the right edge | the undo is a cursor-left, which clamps at column one instead of stepping to the previous row — a wrapped prediction could not be taken back cleanly |
+
+#### Reconciliation
+
+Real output is authoritative. Before writing it, `\x1b[{n}D\x1b[K` steps back over the *n* locally drawn characters and clears to end of line, so the shell's version repaints from there — including the full-line redraws that zsh's syntax highlighting emits.
+
+Key-bar taps run through the same gate. Without that, tapping an arrow would leave a stale prediction to be erased later against output that never drew it.
+
+### Files changed
+
+| File | Change |
+|---|---|
+| `packages/happy-app/sources/components/terminal/localEcho.ts` | **New.** Pure state machine: `onLocalInput`, `onLocalOutput`, `eraseSequence`. No side effects, no xterm. |
+| `packages/happy-app/sources/components/terminal/localEcho.test.ts` | **New.** 12 tests, including the password-prompt property and the right-edge guard. |
+| `packages/happy-app/sources/components/terminal/Terminal.web.tsx` | Draws the prediction in `onData`, reconciles in the output handler, routes key-bar bytes through the same gate. |
+
+### Notes / scope
+
+- Also fixes a *real* client-side stall, which is where the "it blocks" instinct actually applies: `apiSocket.attachEncryptedListeners` serializes decrypt+dispatch per `(event, scope)` so async decryption cannot reorder a byte stream. During an output burst the echo of your next keystroke waits behind that queue. See `BUG_FIX.md` section 15.
+- Enabled unconditionally: the gating is conservative enough that the failure mode is a missing prediction, not a wrong one. A kill switch can be added if a device disagrees.
+- Needs device validation, particularly the interaction between predictions and zsh syntax-highlighting redraws.

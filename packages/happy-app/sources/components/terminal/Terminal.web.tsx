@@ -21,6 +21,13 @@ import {
   stripTerminalResponses,
   toControlCode,
 } from "./terminalKeys";
+import {
+  initialLocalEchoState,
+  onLocalInput,
+  onLocalOutput,
+  eraseSequence,
+  type LocalEchoState,
+} from "./localEcho";
 
 // ── Input diagnostics ────────────────────────────────────────────────
 //
@@ -110,6 +117,7 @@ export function Terminal({
   const eventCleanupRef = useRef<(() => void) | null>(null);
   const connectAttemptRef = useRef(0);
   const sessionIdRef = useRef(sessionId);
+  const localEchoRef = useRef<LocalEchoState>(initialLocalEchoState);
   // Stamped when a keystroke leaves, read by the first output that follows, to
   // measure the real echo round trip (app → server → daemon → shell → back).
   const lastInputAtRef = useRef<number | null>(null);
@@ -261,6 +269,11 @@ export function Terminal({
         TERMINAL_EVENTS.output,
         (data: { terminalId: string; data: string }) => {
           if (data.terminalId !== terminalId) return;
+          // Reconcile before writing: the shell's output is authoritative, so
+          // anything drawn locally is taken back first.
+          const reconciled = onLocalOutput(localEchoRef.current);
+          localEchoRef.current = reconciled.next;
+          const erase = eraseSequence(reconciled.eraseCount);
           const sentAt = lastInputAtRef.current;
           if (sentAt !== null) {
             lastInputAtRef.current = null;
@@ -271,9 +284,9 @@ export function Terminal({
             );
           }
           if (isActiveRef.current) {
-            terminal.write(data.data);
+            terminal.write(erase + data.data);
           } else {
-            pendingOutputRef.current.push(data.data);
+            pendingOutputRef.current.push(erase + data.data);
             while (pendingOutputRef.current.length > 500) {
               pendingOutputRef.current.shift();
             }
@@ -308,6 +321,19 @@ export function Terminal({
         }
         const filtered = stripTerminalResponses(data);
         if (filtered) {
+          // Draw the character before it leaves, so typing does not wait on the
+          // round trip. onLocalInput decides when that is safe.
+          const buffer = terminal.buffer.active;
+          const echo = onLocalInput(localEchoRef.current, filtered, {
+            alternateBuffer: buffer.type === "alternate",
+            // Leave the last two columns to the real echo: a prediction that
+            // wrapped could not be taken back with a cursor-left.
+            nearLineEnd: buffer.cursorX >= terminal.cols - 2,
+          });
+          localEchoRef.current = echo.next;
+          if (echo.predict) {
+            terminal.write(echo.predict);
+          }
           lastInputAtRef.current = performance.now();
           void apiSocket
             .sendEncryptedSessionEvent(sid, TERMINAL_EVENTS.input, {
@@ -472,6 +498,14 @@ export function Terminal({
       const tid = terminalIdRef.current;
       const sid = sessionIdRef.current;
       if (!tid || !attachedRef.current) return;
+      // Run the bar's keys through the same gate. None of them are printable,
+      // so this predicts nothing and drops the echo confirmation — without it,
+      // an arrow tap would leave a stale prediction to be erased later against
+      // output it never drew.
+      localEchoRef.current = onLocalInput(localEchoRef.current, data, {
+        alternateBuffer:
+          xtermRef.current?.term.buffer.active.type === "alternate",
+      }).next;
       void apiSocket.sendEncryptedSessionEvent(sid, TERMINAL_EVENTS.input, {
         terminalId: tid,
         data,
