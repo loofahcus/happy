@@ -22,6 +22,7 @@ import {
     getOpenClawPermissionModes,
     mapMetadataOptions,
     resolveCurrentOption,
+    formatModeSummary,
 } from './modelModeOptions';
 import { sortPermissionModes } from '@/utils/permissionModeLabels';
 import { rigMetadataFixture } from '@/sync/__testdata__/rigMetadata';
@@ -455,5 +456,23 @@ describe('modelModeOptions', () => {
     it('cuts mid-word only when there is no boundary to fall back on', () => {
         expect(truncateModelLabel('Supercalifragilisticexpialidocious'))
             .toBe('Supercalifragili\u2026');
+    });
+});
+
+describe('formatModeSummary', () => {
+    it('joins the present values with a middot', () => {
+        expect(formatModeSummary(['yolo', 'Opus 5', 'high'])).toBe('yolo \u00b7 Opus 5 \u00b7 high');
+    });
+
+    // A placeholder like "Model" in the model slot reads as a value, not a gap.
+    it('omits missing values instead of filling them', () => {
+        expect(formatModeSummary(['yolo', null, 'high'])).toBe('yolo \u00b7 high');
+        expect(formatModeSummary([undefined, 'Opus 5', undefined])).toBe('Opus 5');
+        expect(formatModeSummary(['  ', 'Opus 5'])).toBe('Opus 5');
+    });
+
+    it('returns null when nothing is known, so the caller renders the bare icon', () => {
+        expect(formatModeSummary([])).toBeNull();
+        expect(formatModeSummary([null, undefined, ''])).toBeNull();
     });
 });

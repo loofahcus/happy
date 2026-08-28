@@ -671,3 +671,23 @@ export function truncateModelLabel(
     const head = lastSpace >= max - 8 ? cut.slice(0, lastSpace) : cut.trimEnd();
     return `${head}…`;
 }
+
+/**
+ * One-line summary of the active permission mode, model, and effort for the
+ * composer's settings button.
+ *
+ * Upstream collapsed all three into a bare gear icon on web and desktop (only
+ * the narrow-phone composer still shows them as chips), so the values became
+ * invisible on every browser. This renders them beside the gear instead.
+ *
+ * Absent values are omitted rather than filled with a placeholder: "Model"
+ * where a model name belongs reads like a value, not like a gap.
+ */
+export function formatModeSummary(
+    parts: (string | null | undefined)[],
+): string | null {
+    const present = parts
+        .map((part) => part?.trim())
+        .filter((part): part is string => !!part);
+    return present.length > 0 ? present.join(' \u00b7 ') : null;
+}

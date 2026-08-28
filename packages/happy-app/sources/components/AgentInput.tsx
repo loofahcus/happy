@@ -10,7 +10,7 @@ import { layout } from './layout';
 import { MultiTextInput, KeyPressEvent } from './MultiTextInput';
 import { Typography } from '@/constants/Typography';
 import { PermissionMode, ModelMode } from './PermissionModeSelector';
-import { EffortLevel, groupModelModesByProvider, truncateModelLabel } from './modelModeOptions';
+import { EffortLevel, groupModelModesByProvider, truncateModelLabel, formatModeSummary } from './modelModeOptions';
 import { hapticsLight, hapticsError } from './haptics';
 import { Shaker, ShakeInstance } from './Shaker';
 import { StatusDot } from './StatusDot';
@@ -395,6 +395,27 @@ const stylesheet = StyleSheet.create((theme, runtime) => ({
         fontSize: 14,
         color: theme.colors.text,
         ...Typography.default(),
+    },
+    settingsSummary: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 6,
+        flexShrink: 1,
+        minWidth: 0,
+    },
+    settingsSummaryText: {
+        flexShrink: 1,
+        minWidth: 0,
+        fontSize: 13,
+        color: theme.colors.textSecondary,
+        ...Typography.default(),
+    },
+    settingsSummaryFrame: {
+        height: 40,
+        alignItems: 'center',
+        justifyContent: 'center',
+        paddingHorizontal: 8,
+        flexShrink: 1,
     },
     mobileModeSeparator: {
         flexShrink: 0,
@@ -1423,6 +1444,27 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
         </Text>
     );
 
+    // Web and desktop collapse permission/model/effort into a bare gear
+    // (upstream c15eeee9 also deleted the status bar line that used to print
+    // them), so the values were readable nowhere in a browser. Show them next
+    // to the gear, which is the control that changes them.
+    const modeSummary = formatModeSummary([
+        permissionShortLabel,
+        props.modelMode?.name,
+        props.effortLevel?.name,
+    ]);
+
+    const renderSettingsSummary = () => (
+        <View style={styles.settingsSummary}>
+            <Octicons name="gear" size={16} color={theme.colors.button.secondary.tint} />
+            {modeSummary && (
+                <Text style={styles.settingsSummaryText} numberOfLines={1}>
+                    {modeSummary}
+                </Text>
+            )}
+        </View>
+    );
+
     // A session started in a mode this build no longer offers resolves to no
     // mode at all. Falling back to the shield keeps the picker reachable rather
     // than inventing a word for a state we cannot name.
@@ -1513,10 +1555,14 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
                                 <NativeSettingsMenu
                                     accessibilityLabel={t('settings.title')}
                                     groups={[...permissionSettingsGroups, ...modelSettingsGroups]}
-                                    style={{ width: 40, height: 40 }}
+                                    // flexShrink has to be repeated on every wrapper:
+                                    // RN Web's base View style sets flexShrink: 0, so a
+                                    // link that does not opt in stops the summary text
+                                    // from truncating and lets it push the row instead.
+                                    style={{ height: 40, flexShrink: 1 }}
                                 >
-                                    <View style={{ width: 40, height: 40, alignItems: 'center', justifyContent: 'center' }}>
-                                        <Octicons name="gear" size={16} color={theme.colors.button.secondary.tint} />
+                                    <View style={styles.settingsSummaryFrame}>
+                                        {renderSettingsSummary()}
                                     </View>
                                 </NativeSettingsMenu>
                             ) : (
@@ -1531,10 +1577,15 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
                                         paddingVertical: 6,
                                         justifyContent: 'center',
                                         height: 32,
+                                        // Shrinks before the buttons to its right do, and
+                                        // clips inside actionButtonsLeft's overflow: hidden.
+                                        flexShrink: 1,
+                                        minWidth: 0,
                                         opacity: p.pressed ? 0.7 : 1,
                                     })}
+                                    accessibilityLabel={t('settings.title')}
                                 >
-                                    <Octicons name="gear" size={16} color={theme.colors.button.secondary.tint} />
+                                    {renderSettingsSummary()}
                                 </Pressable>
                             )
                         )}

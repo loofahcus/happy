@@ -634,3 +634,49 @@ The merge itself is a pure function in its own module so it is testable without 
 
 - `COALESCE_MS = 8` is a throughput/latency trade that only ever applies to followers. Raising it merges more of a long burst (an 8 ms window already collapses these commands to one event) at no cost to interactive echo.
 - The client's sequencer is left exactly as it is. It is load-bearing for correctness; this reduces what it has to carry.
+
+---
+
+## 18. Model, Effort, and Permission Mode Invisible on Web
+
+### Symptom
+
+In a browser — desktop or phone — the composer shows a bare gear icon where the model, effort level, and permission mode used to be readable. There is no way to tell which model a session is on, or that it is running in yolo, without opening the menu.
+
+### Root cause
+
+Not a rebase casualty: those labels were upstream's own code, and upstream removed them.
+
+At the old base (`16ea2acc`) `AgentInputStatusRow` took `displayPermissionMode`, `permissionLabel`, `sessionStatusModelLabel`, and `sessionStatusEffortLabel` and printed them on the status-bar line. Our Floodgate commit only ever *added* `contextUsage` and `quota` to that row. Upstream then deleted the line's contents in `c15eeee9` ("kill the status bar line"), leaving connection status, git branch, and git changes — and deleted the `sessionStatusBarDisplay` setting that turned the line on.
+
+What replaced it is split by platform, and the browser lost out:
+
+| Surface | Condition | Model / effort / permission |
+|---|---|---|
+| Narrow native phone | `compactMobileComposer` = `Platform.OS !== 'web' && !mac && width <= 700` | text chips in the composer |
+| **Web (any width), Mac desktop, native tablet** | anything else → `desktopActionControls` | a single `Octicons name="gear"`, values only inside the menu |
+
+`useNativeSettingsMenus` is `platform === 'ios' && !runningOnMac`, so web and Mac take the plain `Pressable` gear and a native tablet takes the `NativeSettingsMenu` gear. All three showed the icon alone.
+
+### Fix
+
+Render the values next to the gear, in both gear branches, so every surface that had only an icon now reads e.g. `yolo · Opus 5 · high`. The gear already opens the combined permission + model + effort menu, so this labels the control that changes them rather than adding another one.
+
+`formatModeSummary` joins the known values with a middot and **omits** absent ones. Filling a gap with a placeholder was the tempting alternative and is worse: `Model` sitting where a model name belongs reads like a value. With nothing known it returns null and the bare icon renders, unchanged from today.
+
+The summary shrinks before the buttons to its right do (`flexShrink: 1`, `minWidth: 0`) and clips inside `actionButtonsLeft`'s existing `overflow: hidden`, so a long model name on a narrow phone browser cannot push the send button off the row.
+
+### Files changed
+
+| File | Change |
+|---|---|
+| `packages/happy-app/sources/components/modelModeOptions.ts` | **New** `formatModeSummary()` — pure, omits absent values, null when nothing is known. |
+| `packages/happy-app/sources/components/modelModeOptions.test.ts` | Joining, omission, and the all-empty case. |
+| `packages/happy-app/sources/components/AgentInput.tsx` | `modeSummary` + `renderSettingsSummary()`; both gear branches in `desktopActionControls` render it; `settingsSummary*` styles. |
+
+### Notes / scope
+
+- Deliberately **not** behind a setting. Upstream removed the old one along with the line; adding a toggle to see what a session is running trades one invisible state for another.
+- The narrow-native-phone composer is untouched — it already shows the values as chips.
+- Zen mode still hides the whole left group, as before.
+- **Bug found and fixed**: the summary's `useNativeSettingsMenus` branch (iOS tablets) had no `flexShrink` on either the `NativeSettingsMenu` wrapper or `settingsSummaryFrame`, so a long model name could not truncate there — only the web/Mac `Pressable` branch had it. `react-native-web`'s own `View` base style sets `flexShrink: 0` (unlike CSS), so every wrapper between a row and a truncating text has to opt in explicitly; this one didn't. Added `flexShrink: 1` to both.
