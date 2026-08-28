@@ -680,3 +680,54 @@ The summary shrinks before the buttons to its right do (`flexShrink: 1`, `minWid
 - The narrow-native-phone composer is untouched — it already shows the values as chips.
 - Zen mode still hides the whole left group, as before.
 - **Bug found and fixed**: the summary's `useNativeSettingsMenus` branch (iOS tablets) had no `flexShrink` on either the `NativeSettingsMenu` wrapper or `settingsSummaryFrame`, so a long model name could not truncate there — only the web/Mac `Pressable` branch had it. `react-native-web`'s own `View` base style sets `flexShrink: 0` (unlike CSS), so every wrapper between a row and a truncating text has to opt in explicitly; this one didn't. Added `flexShrink: 1` to both.
+
+---
+
+## 19. Audit: Shrink Chains and Platform Variants Across the UI Changes
+
+### Why
+
+A wrapper with no `flexShrink` stopped a Floodgate project name from truncating, and a popup was dead on web because `NativeSettingsMenu` renders nothing but its children there. Neither is visible to `tsc` or to any test in this repo. Every other UI change on this branch was written the same way, so all of them were audited against the same two failure modes.
+
+### The criterion
+
+Two facts from `react-native-web`'s own source settle how to read this code:
+
+```js
+// node_modules/react-native-web/dist/exports/View/index.js — view$raw
+flexShrink: 0,
+minHeight: 0,
+minWidth: 0,
+```
+
+- **`flexShrink` defaults to 0**, unlike CSS. Every wrapper between a row and a text meant to truncate must opt in explicitly. Miss one link and the text stops truncating and starts pushing its siblings out of the row.
+- **`minWidth: 0` is already set** on every `View`, so the `minWidth: 0` that CSS flexbox would require is redundant here. Harmless, but not what makes a chain work.
+
+### Findings
+
+| Area | Verdict |
+|---|---|
+| Mode summary, `useNativeSettingsMenus` branch | **Broken.** `NativeSettingsMenu style={{ height: 40 }}` and `settingsSummaryFrame` both lacked `flexShrink`, so a long model name could not truncate on an iOS tablet. Fixed. |
+| Mode summary, web/Mac branch | Clean — the `Pressable` carries `flexShrink: 1`. |
+| Quota chip (`AgentInputUsageRow`, from section 8) | Clean as landed — its project-name `Text` already carries `flexShrink: 1` and its wrapping `View` carries `flexShrink: 1, marginRight: 'auto'`. The status-row consolidation this finding originally referred to (moving the chip up beside the git branch, deduping it against the plan's week stat) did not survive rebasing onto upstream's own composer-row redesign (`9de28e0a`) and was dropped — see the Notes below. |
+| `TerminalPanel` pointer check | **Hardened.** `IS_TOUCH` was sampled once at module load, so a desktop browser toggled into device emulation never grew the key bar without a reload — exactly how it gets tested. Now a subscribed `matchMedia` hook. Its dead `Platform.OS !== 'web'` branch is gone; the panel is web-only. |
+| `copyAction` in the message footer | Behaviour fine, comment misleading. `alignSelf: 'flex-start'` was written for a **column** parent, where the cross axis is horizontal and it meant "shrink-wrap the glyph". Reparenting it into a row flipped the axis to vertical, where it means "top-align" — and it changes nothing because the button is the tallest item in that row. Comment corrected rather than the style. |
+| `NativeSettingsMenu` JSX sites | Clean. 5 real sites (9 grep hits included `…Option`/`…Group` **type** references); every one is behind `useNativeSettingsMenus` or an explicit web branch. |
+| `Pressable` + `onMouseDown`/`onTouchStart` (key bar) | Clean. `_excluded` does not strip them, and `PressResponder.getEventHandlers()` returns only `onStartShouldSetResponder`, `onKeyDown`, `onResponder*`, `onContextMenu` — so they are not overwritten and reach the DOM through `View`'s forwarded `mouseProps`/`touchProps`. |
+| `View` + `onContextMenu` (markdown copy) | Clean — `onContextMenu` is in the forwarded `clickProps`. |
+| Other `.web.tsx` variants (`Shaker`, `ShimmerText`, `PlusPlus`, `NativeOptionsPicker`) | Clean — all real implementations. `NativeSettingsMenu.web` is the only no-op in the tree. |
+
+### Files changed
+
+| File | Change |
+|---|---|
+| `packages/happy-app/sources/components/AgentInput.tsx` | `flexShrink: 1` on the native-menu wrapper and `settingsSummaryFrame`. |
+| `packages/happy-app/sources/components/terminal/TerminalPanel.tsx` | `useCoarsePointer()` replaces the module-load `IS_TOUCH`. |
+| `packages/happy-app/sources/components/MessageView.tsx` | Comment on `copyAction` corrected for its new parent. |
+
+### Notes / scope
+
+- **Static analysis cannot catch either failure mode.** A missing `flexShrink` is a valid style and a no-op wrapper component is valid JSX; both typecheck and both pass every test here. The remaining verification for all of these changes is looking at them on a device.
+- The `TerminalPanel` height drag handle is still mouse-only (`onMouseDown` + `mousemove`), so it cannot be dragged on a phone. Known and unaddressed.
+- This audit originally covered two fork commits ("put budget, project, and context on the status row" and "merge the plan week quota and Floodgate budget into one slot") that moved the Floodgate chip up next to the git branch and deduped it against the plan's week percentage. Rebasing onto upstream commit `9de28e0a` ("redesign composer status rows with usage gauge"), which landed in between and restructured the same rows independently, made both commits' diffs inapplicable. They were dropped rather than force-merged; the Floodgate quota chip from section 8 still renders in `AgentInputUsageRow`, just without that later layout pass.
+- The "rename session" `Pressable` audited in an earlier pass of this section no longer exists: upstream deleted the whole avatar/title/status header from `info.tsx` (`dcf38e10`) while this branch was rebasing, taking the wrapped `Text` with it. See `NEW_FEATURES.md` section 4.

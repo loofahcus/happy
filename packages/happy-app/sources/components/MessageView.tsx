@@ -500,8 +500,12 @@ const styles = StyleSheet.create((theme) => ({
     maxWidth: '100%',
   },
   copyAction: {
-    // No width, so the box shrink-wraps the glyph and its left edge lands on the
-    // same x as the markdown text above it. hitSlop carries the touch target.
+    // Shrink-wraps the glyph so its left edge lands on the same x as the markdown
+    // text above it; hitSlop carries the touch target. The row it now sits in
+    // gives that for free — `alignSelf` here reads as the cross axis, which in a
+    // row is vertical, and the button is the tallest item so it changes nothing.
+    // Kept only because removing it is a behaviour change on any future layout
+    // that puts this button back in a column.
     alignSelf: 'flex-start',
     height: 20,
     justifyContent: 'center',
