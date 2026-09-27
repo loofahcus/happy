@@ -161,7 +161,6 @@ The rename UI is intentionally minimal: a `Modal.prompt` returning the new title
 
 | Surface | Trigger |
 |---|---|
-| Session info page header | Tap the session name |
 | Session info page → Quick Actions | "Rename Session" item with pencil icon |
 
 ### Files changed
@@ -169,13 +168,14 @@ The rename UI is intentionally minimal: a `Modal.prompt` returning the new title
 | File | Change |
 |---|---|
 | `packages/happy-app/sources/sync/ops.ts` | New `sessionUpdateMetadata` with optimistic concurrency + retry. Imports `Metadata`. |
-| `packages/happy-app/sources/app/(app)/session/[id]/info.tsx` | Adds `handleRenameSession` callback. Wraps the session-name `<Text>` in a `<Pressable>`. Adds a Quick Actions item before "View Machine". |
+| `packages/happy-app/sources/app/(app)/session/[id]/info.tsx` | Adds `handleRenameSession` callback. Adds a "Rename Session" item to the top Quick Actions group, right after "Changes". |
 | `packages/happy-app/sources/text/_default.ts` and 10 translation files | Adds `renameSession`, `renameSessionPrompt`, `renameSessionPlaceholder`, `renameSessionSubtitle`. |
 
 ### Notes / deviations from upstream commit `7b9e95d6`
 
 - The fork commit also touched `SessionsList.tsx` to "remove a broken long-press handler". Upstream already has a working `onLongPress: showActionAlert` on session items, so we leave that path alone.
 - `Modal.prompt` and `apiSocket.emitWithAck` are the same primitives already used by other update flows (e.g. `machine-update-metadata` for renaming machines), so no new infra.
+- Rebased onto upstream commit `dcf38e10`, which deleted the avatar/title/status header this feature originally tapped into (`MobileGlassSurface` + `Avatar` + `StatusDot` block removed from `info.tsx`, Quick Actions promoted to the top of the page instead). The "tap the session name" surface no longer exists — the feature now ships only through the Quick Actions item.
 
 ---
 
@@ -235,6 +235,11 @@ End-to-end encrypted terminal feature spanning all four packages:
 | `packages/happy-app/sources/sync/asyncSequencer.ts` | **New.** `createAsyncSequencer()` — per-key FIFO across the async crypto boundary |
 | `packages/happy-app/sources/sync/asyncSequencer.test.ts` | **New.** Ordering / independence / throw-recovery tests |
 | `packages/happy-app/package.json` | Adds xterm dependencies |
+
+### Notes / deviations from upstream commits `8862681a` and `d17a975e`
+
+- The composer button this sits next to was `GitStatusButton` when this commit was authored; a later upstream commit (`dcf38e10`) renamed it back to `FileViewerButton`. Rebased to sit next to `FileViewerButton` instead — no behavior change, naming only.
+- `TerminalPanel` requires a non-null `sessionId`, but `SessionViewLoaded`'s `sessionId` prop is `string | null` (null before the chat exists). Added a `sessionId &&` guard around the panel render so it only mounts once a chat exists.
 
 ### Ordering: encrypted I/O is serialized end to end
 
@@ -306,3 +311,39 @@ Native long-press behavior is untouched. `onContextMenu` is a web-only DOM prop 
 
 - `markdownCopyV2` is a **per-device** `useLocalSetting` (default off) — it does not sync from iOS, so it must be toggled on in the web app's settings for the right-click to activate.
 - Web is a static SPA export (`web.output: "single"`); shipping this only requires rebuilding/redeploying the web bundle — no CLI or server changes.
+
+---
+
+## 7. Custom Model Names in the Model Picker
+
+### Problem
+
+Upstream persists and restores the selected model + effort per session (via `useNewSessionDraft` + `findPreferredModeIndex`), but only for models that appear in the hardcoded list (`getHardcodedModelModes` / `getAvailableModels`). There is no way to point a session at an arbitrary model string (e.g. a dated snapshot like `claude-opus-4-8`, a `[1m]` variant, or an internal alias), and a persisted custom name could never be restored because `findPreferredModeIndex` / `resolveCurrentOption` can only match keys present in the list.
+
+### Design
+
+Add a small, self-contained helper set to `modelModeOptions.ts`:
+
+- `CUSTOM_MODEL_KEY` (`'__custom__'`) — the sentinel key for the "custom…" row.
+- `withCustomModelOption(models, currentKey)` — returns a new array that (a) prepends a synthetic entry for `currentKey` when it isn't already in the list, so a persisted custom name shows up as the selected row, and (b) always appends the `custom…` sentinel so the user can enter a new name. Pure/immutable — it copies the input.
+
+The model pickers are augmented through this helper:
+
+- **New-session screen (`new/index.tsx`)** — a `customModelName` state feeds `withCustomModelOption`. Selecting `custom…` opens `Modal.prompt`; the entered name is stored in the draft (`draft.setModelMode`) so upstream's existing restore path picks it up. A mount-once effect re-injects a persisted custom name from the draft (guarded by a ref) so `findPreferredModeIndex` can match it. Picking a real model afterwards drops the synthetic row. `showModel` is computed from the **base** list so the picker's visibility is unchanged.
+- **Active session (`SessionView.tsx` → `SessionStatusBar` model menu)** — `availableModels` comes from the shared `useComposerModes()` hook, which now wraps its own `getAvailableModels(...)` result with `withCustomModelOption(..., session.modelMode ?? <agent default>)` (so a custom default from Agents settings also resolves; skipped for Rig sessions, same as the new-session screen). `SessionView`'s `updateModelMode` prompts for a name when the `custom…` row is chosen, then persists it via `sessionSetAgentModes`.
+- **Agent defaults (`settings/agents.tsx`)** — the Model field of the Claude and Codex sections ends with a "Custom model…" row (upstream only offered it for Codex). It prompts for an exact model ID and stores it as the `modelMode` default override; a stored ID absent from the list shows as the checked row.
+
+### Notes / deviations
+
+- Replaces the custom-model portion of fork commit `20de6ad1` (the rest of that commit — Context HUD, model badge, usage telemetry, dynamic context window — is now provided by upstream `#1463` / `#1561` and was dropped).
+- Subsumes fork commit `42fab385` ("persist custom model and effort selection"): upstream already persists/restores model + effort for listed models, so only the custom-name gap remained, which this section closes.
+- Rebased onto a later upstream commit that extracted `SessionView`'s inline `availableModels`/`availableModes`/`modelMode`/`effortLevel` computation into a shared `useComposerModes()` hook (`sources/hooks/useComposerModes.ts`). The custom-model wrapping moved with it, into the hook itself, so any future consumer of `useComposerModes` gets the "custom…" row for free instead of needing to re-wrap it. `updateModelMode`'s custom-name prompt stayed in `SessionView` since it's a UI concern, not a derived-state concern.
+
+### Files changed
+
+- `packages/happy-app/sources/components/modelModeOptions.ts` — `CUSTOM_MODEL_KEY`, `withCustomModelOption`.
+- `packages/happy-app/sources/app/(app)/new/index.tsx` — custom option + prompt + persisted-name restore in the new-session picker.
+- `packages/happy-app/sources/hooks/useComposerModes.ts` — wraps `availableModels` with `withCustomModelOption` for non-Rig sessions.
+- `packages/happy-app/sources/-session/SessionView.tsx` — custom-name prompt in `updateModelMode`.
+- `packages/happy-app/sources/app/(app)/settings/agents.tsx` — "Custom model…" row for Claude as well as Codex.
+- `packages/happy-app/sources/text/_default.ts` + all `translations/*.ts` — `newSession.customModel{Title,Description,Placeholder}`.

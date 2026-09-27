@@ -5,6 +5,7 @@ import {
     getEffortLevelsForModel,
     getRigCurrentModelOptionKey,
     resolveCurrentOption,
+    withCustomModelOption,
     type EffortLevel,
 } from '@/components/modelModeOptions';
 import type { ModelMode, PermissionMode } from '@/components/PermissionModeSelector';
@@ -45,14 +46,14 @@ export function useComposerModes(session: Session | null | undefined): ComposerM
         resolveAgentDefaultConfig(agentDefaultOverrides, flavor, cliVersion)
     ), [agentDefaultOverrides, cliVersion, flavor]);
 
-    const availableModels = React.useMemo(() => (
-        getAvailableModels(
-            flavor,
-            metadata,
-            t,
-            session?.modelMode ?? (isRig ? null : effectiveAgentDefaults.modelMode),
-        )
-    ), [flavor, metadata, session?.modelMode, effectiveAgentDefaults.modelMode, isRig]);
+    const availableModels = React.useMemo(() => {
+        const selectedKey = session?.modelMode ?? (isRig ? null : effectiveAgentDefaults.modelMode);
+        const models = getAvailableModels(flavor, metadata, t, selectedKey);
+        // Rig's list comes from the daemon, which rejects names it did not offer,
+        // so the "custom…" row is only added for the local harnesses. The key
+        // includes the agent default, so a custom default also resolves here.
+        return isRig ? models : withCustomModelOption(models, selectedKey);
+    }, [flavor, metadata, session?.modelMode, effectiveAgentDefaults.modelMode, isRig]);
     const availableModes = React.useMemo(() => (
         getAvailablePermissionModes(flavor, metadata, t, session?.permissionMode)
     ), [flavor, metadata, session?.permissionMode]);
