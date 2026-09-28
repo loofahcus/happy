@@ -55,6 +55,7 @@ function setup(rows: ReturnType<typeof record>[], archived = false) {
     const Harness = compile(`class Sync { ${methods.join('\n')} }; return Sync;`, {
         storage, apiSocket: { request }, normalizeRawMessage, SEQ_BACKWARD_INITIAL_SENTINEL: 2147483647,
         log: { log() {} }, setTimeout: (resolve: () => void) => resolve(),
+        loadMessageCache: () => null, appendMessageCache: () => {},
     });
     const sync = new Harness();
     const encryption = { decryptMessages: vi.fn(async (messages: unknown[]) => messages) };

@@ -63,8 +63,8 @@ function transport(state: ReturnType<typeof createReducer>) {
         applyUserMessageServerIds: (_sid: string, pairs: { serverId: string; localId: string }[]) => registerUserMessageServerIds(state, pairs),
     }) };
     const javascript = ts.transpile(`class Sync { ${methods} }; return Sync;`, { target: ts.ScriptTarget.ES2022 });
-    const Harness = new Function('apiSocket', 'storage', 'normalizeRawMessage', 'log', javascript)(
-        apiSocket, storage, normalizeRawMessage, { log() {} },
+    const Harness = new Function('apiSocket', 'storage', 'normalizeRawMessage', 'log', 'loadMessageCache', 'appendMessageCache', javascript)(
+        apiSocket, storage, normalizeRawMessage, { log() {} }, () => null, () => {},
     );
     const sync = new Harness();
     Object.assign(sync, {

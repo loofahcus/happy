@@ -58,6 +58,8 @@ vi.mock('@/sync/apiAttachments', () => ({ requestAttachmentUpload: vi.fn(), uplo
 vi.mock('@/sync/apiProjects', () => ({ fetchProjects: vi.fn() }));
 vi.mock('@/sync/projects', () => ({ decryptProjectRecord: vi.fn(), loadProjectAvatar: vi.fn() }));
 vi.mock('@/sync/sessionAvatars', () => ({ loadSessionAvatar: mocks.loadAvatar }));
+vi.mock('@/sync/messageCache', () => ({ loadMessageCache: () => null, appendMessageCache: vi.fn(), deleteMessageCache: vi.fn(), cleanExpiredMessageCaches: vi.fn() }));
+vi.mock('@/sync/sessionsCache', () => ({ loadCachedSessions: () => null, saveCachedSessions: vi.fn() }));
 vi.mock('@/sync/typesRaw', () => ({ normalizeRawMessage: (_id: string, _localId: string, _time: number, content: unknown) => content }));
 vi.mock('@/config', () => ({ config: {} }));
 vi.mock('@/log', () => ({ log: { log: vi.fn() } }));

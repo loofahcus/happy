@@ -47,6 +47,8 @@ vi.mock('@/text', () => ({ t: (key: string) => key }));
 vi.mock('@/utils/readFileBytes', () => ({}));
 vi.mock('@/sync/gitStatusSync', () => ({ gitStatusSync: {} }));
 vi.mock('@/realtime/hooks/voiceHooks', () => ({ voiceHooks: { onSessionOnline: vi.fn(), onSessionOffline: vi.fn() } }));
+vi.mock('@/sync/messageCache', () => ({ loadMessageCache: () => null, appendMessageCache: vi.fn(), deleteMessageCache: vi.fn(), cleanExpiredMessageCaches: vi.fn() }));
+vi.mock('@/sync/sessionsCache', () => ({ loadCachedSessions: () => null, saveCachedSessions: vi.fn() }));
 
 import { sync } from './sync';
 import { Encryption } from './encryption/encryption';

@@ -81,3 +81,64 @@ An earlier version of this fix also resolved the window **app-side** for display
 ### Deviation from fork commit `45f41ba5`
 
 The original fork forced 1M for any Opus/Sonnet via `/opus|sonnet/i`; we enable it for Opus and any explicit `[1m]` selection, so standard Sonnet/Haiku stay 200K.
+
+---
+
+## 4. Session-List Cache Silently Stopped Working After the Avatar Rebase
+
+### Problem
+
+Users reported that the session-list cold-start cache (section 3) "stopped working" after an upstream rebase: the sidebar went back to painting blank while `fetchSessions` round-tripped, instead of instantly showing the last-known list.
+
+### Root Cause
+
+`saveCachedSessions` (`sessionsCache.ts`) never stripped `session.avatar` before serializing sessions into the single MMKV key backing this cache. `avatar` is a materialized data URI — the full decrypted avatar image, base64-encoded, up to ~13MB (`MAX_BYTES = 10MB` raw in `sessionAvatars.ts`) — a capability upstream added (`37e94799`, `eb482897`, `38251304`) in the same round of commits this fork rebased onto.
+
+On web, MMKV is backed by `localStorage` (~5MB per origin, shared with the message cache and everything else `persistence.ts` writes). Once enough sessions in the list carried a materialized avatar, `mmkv.set` threw `QuotaExceededError`, and `saveCachedSessions`'s catch block — by design, per section 3's original notes — deleted the entire cache rather than partially writing it. The next cold start then found no cache at all, which reads exactly like "the cache stopped working," because on every subsequent app run the immediately-prior save had already wiped it.
+
+### Fix
+
+Strip `avatar` from the cached payload; keep `avatarDescriptor` (a few KB at most — `ref`/`preview`/`version`). The descriptor alone is enough for `sessionAvatars.refresh()` to redecode the image in the background after hydrate, the same path a cold, uncached load already takes. The sidebar now paints instantly with placeholder avatars that fill in a moment later, instead of not painting at all.
+
+### Files changed
+
+| File | Change |
+|---|---|
+| `packages/happy-app/sources/sync/sessionsCache.ts` | `saveCachedSessions` also destructures out `avatar` before spreading the rest into the cached row. |
+| `packages/happy-app/sources/sync/sessionsCache.test.ts` | **New.** Reproduces the quota failure with a realistic avatar-bearing session list (100 sessions × ~80KB decrypted avatar, plus simulated contention from other MMKV consumers) and asserts the cache still round-trips. |
+
+### Notes
+
+- This is the first regression test this cache has had since it was introduced in section 3.
+- Same rebase also surfaced two smaller, related test-mock gaps in this cache's own test files (section 5) and a separate behavioral bug in `claudeRemote.ts` (section 11) — both caught by running the *full* test suite instead of only the targeted tests touched by each conflict resolution.
+
+---
+
+## 5. Sync Test Harnesses Didn't Know About the Message Cache
+
+### Problem
+
+After adding the local message cache (section 3), four existing test files failed with `ReferenceError` instead of running their assertions: `sync.history.spec.ts`, `sync.receipts.spec.ts` (both extract `Sync` class methods by source text into an isolated `new Function(...)` harness with an explicit dependency allowlist), and `sync.preload.test.ts` / `sync.send.test.ts` (both mock every import of `sync.ts` directly).
+
+### Root Cause
+
+None of the four knew about `loadMessageCache`/`appendMessageCache` — fork additions that landed in `sync.ts` after these test files' mock/allowlist surfaces were last touched. `sync.history.spec.ts`'s allowlist-based harness threw `loadMessageCache is not defined` the moment a whitelisted method that now calls it actually ran.
+
+### Fix
+
+Add the missing mock/allowlist entries, matching each file's existing pattern exactly — no-op mocks for the cache reads/writes (`loadMessageCache`/`loadCachedSessions` return `null`; the rest are `vi.fn()`).
+
+### Files changed
+
+| File | Change |
+|---|---|
+| `packages/happy-app/sources/sync/sync.history.spec.ts` | Injects `loadMessageCache`/`appendMessageCache` into the compiled harness. |
+| `packages/happy-app/sources/sync/sync.receipts.spec.ts` | Same, via the raw `new Function(...)` call. |
+| `packages/happy-app/sources/sync/sync.preload.test.ts` | `vi.mock`s `@/sync/messageCache` and `@/sync/sessionsCache`. |
+| `packages/happy-app/sources/sync/sync.send.test.ts` | Same. |
+
+### Notes
+
+- These four files weren't touched by any rebase conflict — they applied cleanly, so nothing flagged them during conflict resolution. They only surfaced by running the package's *full* test suite as a separate verification pass, not just the tests for files a conflict actually touched.
+- The terminal feature (`NEW_FEATURES.md` section 5) has the same class of gap in a different test file — see section 8.
+
