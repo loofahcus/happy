@@ -4,6 +4,7 @@ import { AgentGoalBar, type AgentGoalAction } from '@/components/AgentGoalBar';
 import { AgentQuestionBanner } from '@/components/AgentQuestionBanner';
 import { AgentInput } from '@/components/AgentInput';
 import { resolveVisibleAgentGoalStatus } from '@/components/agentGoalStatus';
+import { TerminalPanel } from '@/components/terminal/TerminalPanel';
 import type { MultiTextInputHandle } from '@/components/MultiTextInput';
 import { layout } from '@/components/layout';
 import {
@@ -772,6 +773,21 @@ export function SessionViewLoaded({
     onHeaderBackdropVisibilityChange?: (visible: boolean) => void;
 }) {
     const { theme } = useUnistyles();
+    const [showTerminal, setShowTerminal] = React.useState(false);
+
+    // Ctrl+` toggle terminal (web only)
+    const toggleTerminal = React.useCallback(() => setShowTerminal(v => !v), []);
+    React.useEffect(() => {
+        if (Platform.OS !== 'web') return;
+        const handleKey = (e: KeyboardEvent) => {
+            if (e.ctrlKey && e.key === '`') {
+                e.preventDefault();
+                toggleTerminal();
+            }
+        };
+        window.addEventListener('keydown', handleKey);
+        return () => window.removeEventListener('keydown', handleKey);
+    }, [toggleTerminal]);
     const router = useRouter();
     const safeArea = useSafeAreaInsets();
     const isLandscape = useIsLandscape();
@@ -1209,6 +1225,7 @@ export function SessionViewLoaded({
                 showStatusDetails={showBottomDockDetails}
                 sessionStatusUsageLimits={session?.agentState?.usageLimits ?? null}
                 onActionAreaOffsetChange={usesFloatingMobileDock ? handleComposerCardOffsetChange : undefined}
+                onTerminalToggle={toggleTerminal}
             />
         </View>
     );
@@ -1308,8 +1325,9 @@ export function SessionViewLoaded({
                 flexGrow: 1,
                 // The floating chat content reaches the physical bottom of
                 // the screen. AgentContentView keeps the dock itself above
-                // the home indicator / navigation area.
-                paddingBottom: usesFloatingMobileDock
+                // the home indicator / navigation area. The terminal panel owns
+                // that inset itself, so drop it whenever the panel is open.
+                paddingBottom: (usesFloatingMobileDock || showTerminal)
                     ? 0
                     : safeArea.bottom + ((isRunningOnMac() || Platform.OS === 'web') ? 8 : 0),
             }}>
@@ -1321,6 +1339,12 @@ export function SessionViewLoaded({
                     onDockInsetChange={handleBottomDockInsetChange}
                 />
             </View >
+            {showTerminal && sessionId && (
+                <TerminalPanel
+                    sessionId={sessionId}
+                    onClose={() => setShowTerminal(false)}
+                />
+            )}
 
             {/* Back button for landscape phone mode when header is hidden */}
             {

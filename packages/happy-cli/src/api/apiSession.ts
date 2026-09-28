@@ -11,6 +11,7 @@ import { AsyncLock } from '@/utils/lock';
 import { deriveKey } from '@/utils/deriveKey';
 import { RpcHandlerManager } from './rpc/RpcHandlerManager';
 import { registerCommonHandlers } from '../modules/common/registerCommonHandlers';
+import { registerTerminalHandlers, destroyAllTerminals } from '../modules/terminal/terminalHandler';
 import { calculateCost } from '@/utils/pricing';
 import {
     releaseReconnectCapabilityMonitor,
@@ -268,6 +269,7 @@ export class ApiSessionClient extends EventEmitter {
             logger: (msg, data) => logger.debug(msg, data)
         });
         registerCommonHandlers(this.rpcHandlerManager, this.metadata.path);
+        registerTerminalHandlers(this.rpcHandlerManager, this.metadata.path);
 
         //
         // Create socket
@@ -1018,6 +1020,7 @@ export class ApiSessionClient extends EventEmitter {
         if (this.closed) return;
         this.closed = true;
         logger.debug('[API] socket.close() called');
+        destroyAllTerminals();
         this.sendSync.stop();
         this.receiveSync.stop();
         this.clearReconnectTimers();

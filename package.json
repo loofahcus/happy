@@ -53,6 +53,7 @@
             "@tailwindcss/oxide",
             "better-sqlite3",
             "esbuild",
+            "node-pty",
             "prisma",
             "sharp"
         ]

@@ -20,6 +20,7 @@ export class RpcHandlerManager {
     private readonly encryptionVariant: 'legacy' | 'dataKey';
     private readonly logger: (message: string, data?: any) => void;
     private socket: Socket | null = null;
+    private eventListeners = new Map<string, (data: any) => void>();
 
     constructor(config: RpcHandlerConfig) {
         this.scopePrefix = config.scopePrefix;
@@ -100,6 +101,9 @@ export class RpcHandlerManager {
         for (const [prefixedMethod] of this.handlers) {
             socket.emit('rpc-register', { method: prefixedMethod });
         }
+        for (const [event, handler] of this.eventListeners) {
+            this.attachEventListener(socket, event, handler);
+        }
     }
 
     onSocketDisconnect(): void {
@@ -128,6 +132,47 @@ export class RpcHandlerManager {
     clearHandlers(): void {
         this.handlers.clear();
         this.logger('Cleared all RPC handlers');
+    }
+
+
+    emitEncryptedEvent(event: string, data: any): boolean {
+        if (!this.socket) return false;
+        const encrypted = encodeBase64(
+            encrypt(this.encryptionKey, this.encryptionVariant, data),
+        );
+        this.socket.emit(event, { scope: this.scopePrefix, data: encrypted });
+        return true;
+    }
+
+    onEncryptedEvent(event: string, handler: (data: any) => void): void {
+        this.eventListeners.set(event, handler);
+        if (this.socket) {
+            this.attachEventListener(this.socket, event, handler);
+        }
+    }
+
+    offEncryptedEvent(event: string): void {
+        this.eventListeners.delete(event);
+        if (this.socket) {
+            this.socket.off(event);
+        }
+    }
+
+    private attachEventListener(
+        socket: Socket,
+        event: string,
+        handler: (data: any) => void,
+    ): void {
+        socket.off(event);
+        socket.on(event, (msg: { scope: string; data: string }) => {
+            if (msg.scope !== this.scopePrefix) return;
+            const decrypted = decrypt(
+                this.encryptionKey,
+                this.encryptionVariant,
+                decodeBase64(msg.data),
+            );
+            if (decrypted !== null) handler(decrypted);
+        });
     }
 
     /**

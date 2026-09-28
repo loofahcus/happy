@@ -15,6 +15,7 @@ import { machineUpdateHandler } from "./socket/machineUpdateHandler";
 import { artifactUpdateHandler } from "./socket/artifactUpdateHandler";
 import { accessKeyHandler } from "./socket/accessKeyHandler";
 import { socketServerOptions } from "./socketConfig";
+import { terminalHandler } from "./socket/terminalHandler";
 
 export function startSocket(app: Fastify) {
     const io = new Server(app.server, socketServerOptions);
@@ -185,6 +186,7 @@ export function startSocket(app: Fastify) {
         machineUpdateHandler(userId, socket);
         artifactUpdateHandler(userId, socket);
         accessKeyHandler(userId, socket);
+        terminalHandler(userId, socket, io);
 
         // Ready
         log({ module: 'websocket' }, `User connected: ${userId}`);

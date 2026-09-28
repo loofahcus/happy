@@ -69,6 +69,11 @@ vi.mock('@/modules/common/registerCommonHandlers', () => ({
     registerCommonHandlers: vi.fn()
 }));
 
+vi.mock('@/modules/terminal/terminalHandler', () => ({
+    registerTerminalHandlers: vi.fn(),
+    destroyAllTerminals: vi.fn()
+}));
+
 vi.mock('@/utils/time', () => ({
     backoff: mockBackoff,
     delay: mockDelay

@@ -215,3 +215,139 @@ Rewrite `RenderImageBlock` to:
 ### Notes / scope
 
 - Port of the **image-display portion** of fork commit `9bb4b079`. The other halves of that commit (large-payload base64/AES stack overflows, RPC retry, image upload picker fallback) are deferred — symptoms haven't been observed yet on this fork's deployment.
+
+---
+
+## 8. Terminal Feature Left an Existing Test's RPC Mock Dangling
+
+### Problem
+
+After adding terminal RPC handlers (`NEW_FEATURES.md` section 5), `apiSession.test.ts` failed with `TypeError: rpc.registerHandler is not a function` instead of running its assertions.
+
+### Root Cause
+
+The test's stub `RpcHandlerManager` mock — used to construct a real `ApiSessionClient` without native services — lacked a `registerHandler` method, since it was last touched before this fork added terminal support. `registerTerminalHandlers`, called unconditionally from `ApiSessionClient`'s constructor, threw the moment it tried to use it; `destroyAllTerminals`, called from `close()`, threw the same way for a separate batch of tests.
+
+### Fix
+
+Add `vi.mock('@/modules/terminal/terminalHandler', ...)` with no-op `registerTerminalHandlers`/`destroyAllTerminals`, matching the existing `vi.mock('@/modules/common/registerCommonHandlers', ...)` pattern already in the file.
+
+### Files changed
+
+| File | Change |
+|---|---|
+| `packages/happy-cli/src/api/apiSession.test.ts` | `vi.mock`s `@/modules/terminal/terminalHandler` (`registerTerminalHandlers`, `destroyAllTerminals`). |
+
+### Notes
+
+- This file wasn't touched by any rebase conflict — it applied cleanly, so nothing flagged it during conflict resolution. It only surfaced by running the package's *full* test suite as a separate verification pass.
+- The message/session cache (`NEW_FEATURES.md` section 3) has the same class of gap in four other sync test files — see section 5.
+
+
+## 9. Terminal Input Failures Left No Trace
+
+### Symptom
+
+On a phone browser the terminal renders and streams output normally, but typing does nothing — with some third-party IMEs. The iOS system keyboard works. There was no way to tell where the keystroke went: the app has no reachable devtools on a phone, and the daemon logged nothing on the input path.
+
+### Root cause of the blind spot
+
+The input path crosses five boundaries — soft keyboard → xterm's helper textarea → xterm's `onData` → our response filter → socket → daemon → PTY — and none of them was observable:
+
+1. **App side had no instrumentation at all.** `console.log` is not reachable on a phone, so even adding logs would not have helped.
+2. **The daemon swallowed rejects silently.** `rpc.onEncryptedEvent(TERMINAL_EVENTS.input, ...)` called `terminalInputPayloadSchema.parse(raw)`, which *throws* on a malformed payload. The throw escaped into the socket.io listener, so a dropped keystroke produced neither a log line nor an error the user could see.
+
+### Fix
+
+**Observability where it can actually be read.** Opt in with `?termdebug=1`. Diagnostics are written into the xterm buffer itself rather than to the console, because the output path is known to work and is the one channel a phone can display. Each layer announces itself, so one session on the device says which boundary drops the keystroke:
+
+| Layer | Marker |
+|---|---|
+| Browser → helper textarea | `keydown` (key + keyCode), `input` (value), `compositionstart/update/end`, `focus`/`blur` |
+| xterm → us | `onData` with control bytes rendered readable (`a<0d>b`) |
+| Response filter | whether it emptied the payload |
+| Send | `sendEncryptedSessionEvent` resolved or rejected |
+| Round trip | measured `echo rtt` in ms, stamped on send and read by the first output back |
+
+`keyCode 229` on `keydown` is the Android composition key; seeing `input`/`composition*` without a following `onData` means xterm swallowed the keystroke, and seeing nothing at all means the focused element is not xterm's textarea.
+
+**Stop losing keystrokes silently.** `safeParse` plus a debug log, and drop. Deliberately no per-keystroke success log — that would put file I/O on the echo path this feature is trying to keep fast.
+
+### Files changed
+
+| File | Change |
+|---|---|
+| `packages/happy-app/sources/components/terminal/terminalKeys.ts` | **New.** `stripTerminalResponses` moved out of `Terminal.web.tsx` so it is testable without xterm, its CSS, or the socket layer; adds `describeBytes` for readable control bytes. |
+| `packages/happy-app/sources/components/terminal/terminalKeys.test.ts` | **New.** Device-reply stripping, the arrow keys surviving it, and byte formatting. |
+| `packages/happy-app/sources/components/terminal/Terminal.web.tsx` | `TERM_DEBUG` / `diag()`; textarea event listeners; `onData`, filter, and send markers; echo-RTT measurement. |
+| `packages/happy-cli/src/modules/terminal/terminalHandler.ts` | `safeParse` + log instead of a throwing `parse`. |
+
+### Notes / scope
+
+- The regex is deliberately **case-sensitive** and a test pins it: the DA1 pattern ends in a lowercase `c`, so `ESC [ C` — the right-arrow key — must not match it. Adding an `i` flag would silently eat every right-arrow.
+- The third-party IME failure itself is **not fixed here**; this commit only makes it diagnosable. The iOS system keyboard is a working workaround.
+
+## 10. Flaky PTY Test: Fixed Sleeps Instead of the Actual Condition
+
+### Symptom
+
+`PtyProvider > fires onExit when process exits` fails intermittently with `expected false to be true` — a message that says nothing about what went wrong. Observed across a session: 3/3 failures in one sampling of the whole file, 1/3 in another, and 1/6 when run in isolation.
+
+### Root cause
+
+Three tests in `ptyProvider.test.ts` drive a real shell through a real pty, and every wait was a guess at how long that takes:
+
+| Test | Guesses |
+|---|---|
+| `writes to terminal and receives echo` | 500 ms for the shell to come up, 500 ms for the echo |
+| `buffers output for replay` | 300 ms, then 500 ms |
+| `fires onExit when process exits` | 300 ms, then 2000 ms for the exit |
+
+Those numbers held on an idle machine. They are violated exactly when the suite is under load — which is the normal case, since these tests run right after eight others that each spawn their own shell. The exit test was also boxed in by vitest's default 5 s test timeout, so its budget could not grow past 2.3 s without the runner killing it first.
+
+The assertion made this worse: `expect(exited).toBe(true)` reports `expected false to be true`, which is indistinguishable from a genuine "onExit never fires" regression.
+
+### Fix
+
+Poll for the condition instead of guessing at its duration. A local `waitFor(description, condition)` polls every 10 ms up to 8 s and, on timeout, throws a message naming what it was waiting for. The per-test timeout is raised to 15 s so that message is what fails, rather than vitest's generic 5 s cutoff.
+
+No fixed sleep remains, so there is no timing assumption left to violate. Two waits disappeared entirely:
+
+- **"Wait for the shell to be ready" is unnecessary.** The tty buffers a write that arrives before the shell reads it, so writing immediately still produces the sentinel; the poll for the sentinel is the only thing that has to be correct.
+- **The replay-buffer test now polls the buffer** rather than the `onData` callback. The buffer is what a reattaching client replays, so it is also what the test is about.
+
+Faster as a side effect: the file drops from 4197 ms to 1846 ms, since roughly 3.6 s of it was sleeping.
+
+### Files changed
+
+| File | Change |
+|---|---|
+| `packages/happy-cli/src/modules/terminal/ptyProvider.test.ts` | `waitFor()` helper; the echo, replay-buffer, and exit tests poll for their condition and carry an explicit 15 s timeout. |
+
+### Notes / scope
+
+- **Verification is honest but incomplete:** the original failure could not be reproduced deterministically. Under a constructed load (three concurrent suites plus a busy `tsc`) the *old* code passed 3/3, so that was not the trigger. The fix is therefore justified by removing the class of failure — there is no longer a duration being guessed — rather than by a red-to-green reproduction.
+- After the fix: 6/6 sequential runs of the file, and 3/3 under the same concurrent load.
+- `ptyProvider.ts` itself is untouched; this was only ever a test defect.
+
+---
+
+## 11. `node-pty` Native Build Silently Skipped by pnpm's Build-Script Gate
+
+### Problem
+
+`ptyProvider.test.ts` and any other code path that actually `require()`s `node-pty` at runtime fails with `Failed to load native module: pty.node, checked: build/Release, build/Debug, prebuilds/linux-x64`. `node-pty` ships prebuilt binaries only for darwin/win32; on Linux its `install` script must run `node-gyp rebuild` locally.
+
+### Root Cause
+
+pnpm 10 refuses to run a dependency's `install`/`postinstall` scripts unless that dependency is explicitly listed in `pnpm.onlyBuiltDependencies` (root `package.json`) or approved via `pnpm approve-builds`. `node-pty` was a real dependency again (`packages/happy-cli/package.json`) but the allowlist entry for it had been dropped in an unrelated earlier cleanup and never restored, so pnpm silently printed "Ignored build scripts: node-pty" instead of building it — no error, just a native module that's never there until something tries to `require` it.
+
+### Fix
+
+Add `"node-pty"` back to `pnpm.onlyBuiltDependencies` in the root `package.json`.
+
+### Files changed
+
+| File | Change |
+|---|---|
+| `package.json` | Added `"node-pty"` to `pnpm.onlyBuiltDependencies`. |
