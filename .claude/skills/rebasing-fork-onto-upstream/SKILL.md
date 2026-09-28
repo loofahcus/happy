@@ -76,6 +76,16 @@ Not for: routine feature work on the fork that doesn't touch upstream sync.
      features that never coexisted before the rebase can interact badly on the same
      code path the first time they're both present. Neither shows up unless the whole
      suite runs.
+   - Typecheck and unit tests do not catch lockfile/build-tooling damage from conflict
+     resolution — a botched `pnpm-lock.yaml` merge or a dropped `onlyBuiltDependencies`
+     entry can leave `tsc --noEmit` and `vitest` completely green while `pnpm install`
+     or a package's own build is broken. Also run, from a clean `node_modules`
+     (`rm -rf node_modules packages/*/node_modules` first — stale hoisted/isolated
+     layouts from switching `node-linker` mid-session mask real failures):
+     - `npm run build && npm pack --dry-run` in `packages/happy-cli`
+     - `npm run build` in `packages/happy-wire`
+     - `docker build --no-cache -t reedcli/happy-webapp -f Dockerfile.webapp .`
+     - `docker build --no-cache -t reedcli/happy-server -f Dockerfile .`
    - Only after both pass, fast-forward/reset `feat/local-features` to the verified
      scratch branch.
    - When step 5's checks find a bug, fix it at its origin commit — `git rebase -i`,
@@ -172,6 +182,12 @@ Not for: routine feature work on the fork that doesn't touch upstream sync.
   first checking whether it's composite — a commit that fixes both a self-inflicted
   fork bug *and* an unrelated pre-existing one needs to be split (step 7) before either
   half is squashed or kept.
+- Declaring the rebase verified because `tsc --noEmit` and `vitest` are green.
+  `pnpm-lock.yaml` conflict resolution and `package.json`'s `onlyBuiltDependencies`
+  list are exactly the kind of thing both miss — a dropped lockfile package entry or
+  allowlist entry produces no type error and no test failure until something actually
+  tries to install or `require()` the affected native module. Run the actual
+  build/pack/Docker commands too (step 5's last bullet).
 - Letting doc updates from step 4 collect into their own trailing commit during
   conflict resolution. Every doc section belongs in the same commit as the code it
   documents — a pure-docs commit needs its sections redistributed back (step 8), not
