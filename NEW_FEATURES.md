@@ -136,7 +136,7 @@ Web platforms back MMKV with `localStorage` (~5 MB). To survive that ceiling:
 
 - Upstream `fetchMessages` was refactored into `fetchInitialLatestPage` + `fetchForwardSince` since the fork commit. We hook the cache at `applyFetchedMessages` (the shared sink) instead of the original single while-loop, so both initial and incremental fetches keep the cache fresh with no duplication.
 - Sessions cache is **new** — the fork did not cache the session list itself. It addresses the real-world pain of "blank sidebar for several seconds on every refresh."
-- **Bug found and fixed**: `saveCachedSessions` cached `session.avatar` — a materialized data URI of the full decrypted avatar image, up to ~13MB base64 — into the single MMKV key backing this cache. On web (MMKV → localStorage, ~5MB/origin), enough sessions with an avatar made every save throw `QuotaExceededError`, and the catch block silently deleted the whole cache, so the sidebar stopped painting instantly on cold start. Fixed by dropping `avatar` from the cached payload (kept `avatarDescriptor`, a few KB, which is enough to redecode the image in the background after hydrate). See `BUG_FIX.md` section 4 and `sessionsCache.test.ts`.
+- **Bug found and fixed**: `saveCachedSessions` cached `session.avatar` — a materialized data URI of the full decrypted avatar image, up to ~13MB base64 — into the single MMKV key backing this cache. On web (MMKV → localStorage, ~5MB/origin), enough sessions with an avatar made every save throw `QuotaExceededError`, and the catch block silently deleted the whole cache, so the sidebar stopped painting instantly on cold start. Fixed by dropping `avatar` from the cached payload (kept `avatarDescriptor`, a few KB, which is enough to redecode the image in the background after hydrate). See `BUG_FIX.md` section 3 and `sessionsCache.test.ts`.
 
 ---
 
@@ -487,6 +487,6 @@ Key-bar taps run through the same gate. Without that, tapping an arrow would lea
 
 ### Notes / scope
 
-- Also fixes a *real* client-side stall, which is where the "it blocks" instinct actually applies: `apiSocket.attachEncryptedListeners` serializes decrypt+dispatch per `(event, scope)` so async decryption cannot reorder a byte stream. During an output burst the echo of your next keystroke waits behind that queue. See `BUG_FIX.md` section 15.
+- Also fixes a *real* client-side stall, which is where the "it blocks" instinct actually applies: `apiSocket.attachEncryptedListeners` serializes decrypt+dispatch per `(event, scope)` so async decryption cannot reorder a byte stream. During an output burst the echo of your next keystroke waits behind that queue. See `BUG_FIX.md` section 16.
 - Enabled unconditionally: the gating is conservative enough that the failure mode is a missing prediction, not a wrong one. A kill switch can be added if a device disagrees.
 - Needs device validation, particularly the interaction between predictions and zsh syntax-highlighting redraws.

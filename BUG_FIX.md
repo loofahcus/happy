@@ -84,7 +84,7 @@ The original fork forced 1M for any Opus/Sonnet via `/opus|sonnet/i`; we enable 
 
 ---
 
-## 4. Session-List Cache Silently Stopped Working After the Avatar Rebase
+## 3. Session-List Cache Silently Stopped Working After the Avatar Rebase
 
 ### Problem
 
@@ -110,11 +110,11 @@ Strip `avatar` from the cached payload; keep `avatarDescriptor` (a few KB at mos
 ### Notes
 
 - This is the first regression test this cache has had since it was introduced in section 3.
-- Same rebase also surfaced two smaller, related test-mock gaps in this cache's own test files (section 5) and a separate behavioral bug in `claudeRemote.ts` (section 11) — both caught by running the *full* test suite instead of only the targeted tests touched by each conflict resolution.
+- Same rebase also surfaced two smaller, related test-mock gaps in this cache's own test files (section 4) and a separate behavioral bug in `claudeRemote.ts` (section 14) — both caught by running the *full* test suite instead of only the targeted tests touched by each conflict resolution.
 
 ---
 
-## 5. Sync Test Harnesses Didn't Know About the Message Cache
+## 4. Sync Test Harnesses Didn't Know About the Message Cache
 
 ### Problem
 
@@ -140,11 +140,11 @@ Add the missing mock/allowlist entries, matching each file's existing pattern ex
 ### Notes
 
 - These four files weren't touched by any rebase conflict — they applied cleanly, so nothing flagged them during conflict resolution. They only surfaced by running the package's *full* test suite as a separate verification pass, not just the tests for files a conflict actually touched.
-- The terminal feature (`NEW_FEATURES.md` section 5) has the same class of gap in a different test file — see section 8.
+- The terminal feature (`NEW_FEATURES.md` section 5) has the same class of gap in a different test file — see section 7.
 
 ---
 
-## 6. React "Cannot read properties of null (reading 'useContext')" via Duplicate React Instance
+## 5. React "Cannot read properties of null (reading 'useContext')" via Duplicate React Instance
 
 ### Problem
 
@@ -180,7 +180,7 @@ Extend the existing `config.resolver.resolveRequest` shim in `metro.config.js` t
 
 ---
 
-## 7. Markdown Images Render as Gray Boxes on Web
+## 6. Markdown Images Render as Gray Boxes on Web
 
 ### Problem
 
@@ -218,7 +218,7 @@ Rewrite `RenderImageBlock` to:
 
 ---
 
-## 8. Terminal Feature Left an Existing Test's RPC Mock Dangling
+## 7. Terminal Feature Left an Existing Test's RPC Mock Dangling
 
 ### Problem
 
@@ -241,11 +241,11 @@ Add `vi.mock('@/modules/terminal/terminalHandler', ...)` with no-op `registerTer
 ### Notes
 
 - This file wasn't touched by any rebase conflict — it applied cleanly, so nothing flagged it during conflict resolution. It only surfaced by running the package's *full* test suite as a separate verification pass.
-- The message/session cache (`NEW_FEATURES.md` section 3) has the same class of gap in four other sync test files — see section 5.
+- The message/session cache (`NEW_FEATURES.md` section 3) has the same class of gap in four other sync test files — see section 4.
 
 ---
 
-## 9. Terminal Input Failures Left No Trace
+## 8. Terminal Input Failures Left No Trace
 
 ### Symptom
 
@@ -288,7 +288,7 @@ The input path crosses five boundaries — soft keyboard → xterm's helper text
 - The regex is deliberately **case-sensitive** and a test pins it: the DA1 pattern ends in a lowercase `c`, so `ESC [ C` — the right-arrow key — must not match it. Adding an `i` flag would silently eat every right-arrow.
 - The third-party IME failure itself is **not fixed here**; this commit only makes it diagnosable. The iOS system keyboard is a working workaround.
 
-## 10. Flaky PTY Test: Fixed Sleeps Instead of the Actual Condition
+## 9. Flaky PTY Test: Fixed Sleeps Instead of the Actual Condition
 
 ### Symptom
 
@@ -333,7 +333,7 @@ Faster as a side effect: the file drops from 4197 ms to 1846 ms, since roughly 3
 
 ---
 
-## 11. `node-pty` Native Build Silently Skipped by pnpm's Build-Script Gate
+## 10. `node-pty` Native Build Silently Skipped by pnpm's Build-Script Gate
 
 ### Problem
 
@@ -355,7 +355,7 @@ Add `"node-pty"` back to `pnpm.onlyBuiltDependencies` in the root `package.json`
 
 ---
 
-## 12. SDK Query Fails Under Apple Claude Code Auth
+## 11. SDK Query Fails Under Apple Claude Code Auth
 
 ### Problem
 
@@ -385,7 +385,7 @@ Also always pass `process.env` to `sdkOptions.env` (previously only set when MCP
 | `packages/happy-cli/src/claude/sdk/query.ts` | Always set `sdkOptions.env`; set `pathToClaudeCodeExecutable` when Apple wrapper is found |
 | `packages/happy-cli/src/claude/sdk/types.ts` | Added `env` field to `QueryOptions` |
 
-## 13. Web Right-Click Markdown Copy Silently Unreachable
+## 12. Web Right-Click Markdown Copy Silently Unreachable
 
 ### Symptom
 
@@ -425,7 +425,7 @@ It therefore cannot take anything away from ordinary selection copying. There is
 
 ---
 
-## 14. Silent Session Stalls: 429 / API Errors Not Surfaced
+## 13. Silent Session Stalls: 429 / API Errors Not Surfaced
 
 ### Symptom
 
@@ -460,7 +460,7 @@ A `labelApiStatus()` helper maps HTTP statuses to short labels, calling out **42
 
 ---
 
-## 15. Provider-Auth Detection and 429/Error Surfacing Fought Over the Same Result Message
+## 14. Provider-Auth Detection and 429/Error Surfacing Fought Over the Same Result Message
 
 ### Problem
 
