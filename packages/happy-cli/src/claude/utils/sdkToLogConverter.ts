@@ -80,6 +80,15 @@ function canonicalModelName(key: string, usage: unknown): string {
 }
 
 /**
+ * Strip a cloud-provider prefix (`anthropic.`, `us.anthropic.`) from a message
+ * model. The Vertex backend reports `anthropic.claude-sonnet-5-5` where Bedrock
+ * and `modelUsage` use the bare name.
+ */
+function withoutProviderPrefix(model: string): string {
+    return model.replace(/^(?:[a-z0-9-]+\.)*anthropic\./, '')
+}
+
+/**
  * SDK to Log converter class
  * Maintains state for parent-child relationships between messages
  */
@@ -154,7 +163,9 @@ export class SDKToLogConverter {
             return message
         }
         const model = typeof message.model === 'string' ? message.model : undefined
-        const contextWindow = model ? this.contextWindowByModel.get(model) : undefined
+        const contextWindow = model
+            ? this.contextWindowByModel.get(model) ?? this.contextWindowByModel.get(withoutProviderPrefix(model))
+            : undefined
         if (!contextWindow) {
             return message
         }

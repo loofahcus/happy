@@ -254,6 +254,28 @@ describe('SDKToLogConverter', () => {
             })
         })
 
+        it.each([
+            'anthropic.claude-sonnet-5-5',
+            'us.anthropic.claude-sonnet-5-5',
+            'global.anthropic.claude-sonnet-5-5'
+        ])('should stamp the window when the message model carries a provider prefix (%s)', (model) => {
+            converter.convert(resultReporting({ 'claude-sonnet-5-5': { contextWindow: 1_000_000 } }))
+
+            const logMessage = converter.convert(assistantWithUsage(model))
+
+            expect((logMessage as any)?.message.usage.context_window).toBe(1_000_000)
+        })
+
+        it('should stamp a prefixed message from a seeded window', () => {
+            const seeded = new SDKToLogConverter(context, undefined, {
+                known: { 'claude-sonnet-5-5': 1_000_000 }
+            })
+
+            const logMessage = seeded.convert(assistantWithUsage('anthropic.claude-sonnet-5-5'))
+
+            expect((logMessage as any)?.message.usage.context_window).toBe(1_000_000)
+        })
+
         it('should match the window to the model of the message', () => {
             converter.convert(resultReporting({
                 'claude-opus-4-8': { contextWindow: 1_000_000 },
